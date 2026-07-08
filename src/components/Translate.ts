@@ -1,5 +1,6 @@
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Translate as VanillaTranslate } from 'langsys-js-typescript';
+import type { PropType } from 'vue';
+import { Translate as VanillaTranslate, type ParamPrimitive } from 'langsys-js-typescript';
 
 /**
  * Props for the Vue `Translate` component. Mirrors the React/Svelte components
@@ -15,6 +16,14 @@ export interface TranslateProps {
     label?: string;
     /** Host element tag. Defaults to a `<translate>` custom element. */
     tag?: string;
+    /**
+     * Interpolation params for `{name}`-style placeholders in the content —
+     * same single-brace syntax as `t()`. In markup, author the placeholders as
+     * `%name%` (the base SDK normalizes `%name%` → `{name}` at capture); a bare
+     * `{name}` also works in Vue templates but collides with `{{ }}` and other
+     * frameworks, so `%name%` is the portable form.
+     */
+    params?: Record<string, ParamPrimitive>;
 }
 
 /**
@@ -26,7 +35,8 @@ export interface TranslateProps {
  *
  * This is the Vue analog of the React/Svelte `<Translate>` components — pure
  * mount/destroy glue. The DOM walking, content-block registration, attribute
- * harvesting, and re-translation lifecycle all live in the base SDK.
+ * harvesting, `%name%`→`{name}` normalization, and re-translation lifecycle all
+ * live in the base SDK.
  *
  * The SDK mutates the rendered DOM in place, so keep the children static:
  * prose, marketing copy, CMS-rendered HTML — the content-block use case. For
@@ -39,6 +49,7 @@ export const Translate = defineComponent({
         custom_id: { type: String, default: '' },
         label: { type: String, default: '' },
         tag: { type: String, default: 'translate' },
+        params: { type: Object as PropType<Record<string, ParamPrimitive>>, default: undefined },
     },
     setup(props, { slots }) {
         const host = ref<HTMLElement | null>(null);
@@ -51,11 +62,18 @@ export const Translate = defineComponent({
                 category: props.category,
                 custom_id: props.custom_id,
                 label: props.label,
+                params: props.params,
             });
         };
 
         onMounted(create);
         watch(() => [props.category, props.custom_id, props.label], create);
+        // Param changes (e.g. a changed count) flow through setParams without recreating.
+        watch(
+            () => props.params,
+            (params) => instance?.setParams(params),
+            { deep: true }
+        );
         onBeforeUnmount(() => instance?.destroy());
 
         return () => h(props.tag, { ref: host }, slots.default?.());

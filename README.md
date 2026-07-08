@@ -191,7 +191,19 @@ The component:
 </Translate>
 ```
 
-`<Translate>` props: `category?`, `custom_id?`, `label?`, `tag?` (defaults to `translate`). `class` and other attributes fall through to the host element.
+#### Runtime values with `params` — write placeholders as `%name%`
+
+`<Translate>` accepts a `params` prop for runtime interpolation across its content — text nodes, translatable attributes, and `<select>` options. In markup, **write placeholders with percent delimiters (`%name%`), not `{name}`**:
+
+```vue
+<Translate category="Dashboard" tag="section" :params="{ name: user.name, count: unread }">
+    <p>Welcome back, %name%. You have %count% new messages.</p>
+</Translate>
+```
+
+Why `%name%`: the base SDK normalizes `%name%` back to canonical `{name}` at capture time, so **translators still only ever see `{name}`** and both spellings register the same content block. A single `{name}` actually works in Vue markup (Vue only consumes `{{ }}`, not single braces) — but `%name%` is the portable form the React/Svelte bindings require too, and it avoids the `{{ }}` collision entirely. Only identifiers between the percents match (`%[A-Za-z_][A-Za-z0-9_]*%`), so literal `%` in prose ("50% off", "width: 100%") is left untouched. To keep a *literal* `%WORD%` (e.g. a Windows env var like `%PATH%` in docs text), wrap it in `<DontTranslate>`. The `params` prop is reactive — a changed `count` re-renders via the base SDK's `setParams()`. Placeholders inside `$t()` stay single-brace `{name}` (they live in a JS string, no collision).
+
+`<Translate>` props: `category?`, `custom_id?`, `label?`, `tag?` (defaults to `translate`), `params?`. `class` and other attributes fall through to the host element.
 
 ### `<Phrase>` — markup-bearing phrases (pluralization)
 
@@ -211,7 +223,7 @@ import { Phrase } from 'langsys-js-vue';
 
 The inline elements never reach the translator — they're replaced with neutral markup tokens (`{m0o}`…`{m0c}`) and the real framework-owned elements are reconstituted around the translated text at render. This is also what lets reordering languages move emphasis correctly (`<span>White</span> House` → `Casa <span>Blanca</span>`). Pass interpolation values via `params`; keep the markup children static.
 
-> Note: Vue templates pass `{n}` through as literal text (unlike JSX), so no escaping is needed.
+> Write the placeholder as `%n%` (the base SDK normalizes it to `{n}` at capture). A single `{n}` also passes through in Vue templates since Vue only consumes `{{ }}` — but `%n%` is the portable form shared with the React/Svelte bindings.
 
 `<Phrase>` props: `category?`, `params?`, `tag?` (defaults to `span`). `class` falls through to the host.
 

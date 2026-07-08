@@ -105,13 +105,14 @@ function onLocaleChange(event: Event) {
             </ul>
         </section>
 
-        <Translate category="Demo" label="Block demo" tag="section" class="card">
+        <Translate category="Demo" label="Block demo" tag="section" class="card" :params="{ name: 'Sarah' }">
             <h2>HTML content blocks</h2>
             <p>
                 Wrap richer content in <code>&lt;Translate&gt;</code> and the SDK registers the whole thing as a
                 <strong>content block</strong> — translators see your styling and structure as the user sees it.
                 Attribute values like <em>placeholder</em>, <em>alt</em>, <em>aria-label</em> are also harvested.
             </p>
+            <p>Runtime values interpolate too: welcome back, %name%.</p>
             <p>
                 <input type="text" placeholder="Type something here…" />
             </p>
