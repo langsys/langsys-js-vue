@@ -1,0 +1,134 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+`langsys-js-vue` is a Vue 3 binding over the framework-agnostic [`langsys-js-typescript`](https://github.com/langsys/langsys-js-typescript) package. The base SDK owns the API client, translation lifecycle, token discovery, DOM tokenizer, and SSR-aware token strategies. This package is intentionally thin and contains only Vue-native concerns.
+
+It is the Vue sibling of [`langsys-js-react`](https://github.com/langsys/langsys-js-react) and [`langsys-js-svelte`](https://github.com/langsys/langsys-js-svelte) and exposes the same capabilities, adapted to Vue idioms: where Svelte uses `$store` auto-subscription and React uses `useSyncExternalStore`, Vue uses composables that bridge signals into `shallowRef`s.
+
+## Layout
+
+```
+src/
+    index.ts                  # public exports — LangsysApp wrapper, composables, components, raw signals, type re-exports
+    adapters.ts               # useSignal (Signal → shallowRef), createLocaleStore, refToLocaleSource (Ref → Signal)
+    composables.ts            # useT / useCurrentLocale / useTranslations / useLocaleStore
+    components/
+        Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
+        Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
+        DontTranslate.ts      # presentational translate="no" host
+    adapters.test.ts          # coverage for the adapter contracts
+    components.test.ts        # structural (SSR-rendered) component coverage
+example/                      # Vite playground (npm run dev) — not published
+```
+
+That's the entire surface. Every other concern — HTTP, missing-token registration, persistence, SSR strategies, lookup/interpolation logic — lives in `langsys-js-typescript`.
+
+Components are authored as `defineComponent` + `h()` render functions in plain `.ts` (no SFCs) so tsup alone builds the package and consumers never need a `.vue` compiler for the library.
+
+## How the wrapping works
+
+1. **`LangsysApp.init({ UserLocaleStore })`** — the wrapper class (`LangsysAppVue` in `index.ts`) accepts a `Signal<string>` for the user locale. Because the Vue locale store (`createLocaleStore`, an alias of the base SDK's `createSignal`) is *already* a `Signal`, `init` is a straight passthrough — no adapter needed. Every other `LangsysApp.*` method is a direct delegation. Apps that already own the locale in a `Ref` adapt it with `refToLocaleSource` (the Vue analog of the Svelte wrapper's `adaptStore`), which uses a `flush: 'sync'` watcher to preserve the Signal contract (synchronous notify, immediate first fire).
+
+2. **Composables (`useT`, `useCurrentLocale`, `useTranslations`)** — each wraps a base-SDK signal with `useSignal`: seed a `shallowRef` from `signal.get()`, subscribe (the base `subscribe` fires synchronously and returns an unsubscribe function), and dispose with the current effect scope (`onScopeDispose`, guarded by `getCurrentScope()` so module-level use works too). `shallowRef` is required — signal payloads like `TFunction` must not be deeply proxied, and the signal replaces the whole value on every change.
+
+3. **`useLocaleStore(initial)`** — creates one `Signal<string>` per `setup()` call (setup runs once per component instance, so no memoization dance is needed), subscribes with `useSignal`, and returns `{ locale, setLocale, store }`. Pass `store` to `init`; drive the locale with `setLocale`.
+
+4. **`<Translate>` / `<Phrase>`** — wrap the vanilla `Translate` / `Phrase` DOM classes. A template ref gets the host node; `onMounted` constructs the instance and `onBeforeUnmount` calls `destroy()`. `<Phrase>` recreates its instance only on `category` change; param changes flow through `setParams` via a deep watcher. The DOM walking, content-block registration, attribute harvesting, and re-translation on locale change all live in the underlying classes. The components mutate the rendered DOM in place — keep children static. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
+
+## Public API
+
+```typescript
+// Main entry point — wraps init to accept a Signal<string>, delegates everything else
+LangsysApp.init({ projectid, key, UserLocaleStore, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale? })
+LangsysApp.t                     // current TFunction (snapshot — not reactive on its own; use useT())
+LangsysApp.getCountries() / getCurrencies() / getDialCodes() / getLocales*() / ...
+LangsysApp.detectPreferredLocale(acceptLanguageHeader?, supportedLocales?)
+LangsysApp.refresh()
+LangsysApp.translationsLoadingPromise
+
+// Composables (the reactive layer)
+useT()                   -> Readonly<ShallowRef<TFunction>>   // updates on translations/locale change
+useCurrentLocale()       -> Readonly<ShallowRef<string>>      // loaded locale (lags UserLocaleStore until fetch settles)
+useTranslations()        -> Readonly<ShallowRef<iCategories>> // raw catalog
+useLocaleStore(initial?) -> { locale, setLocale, store }
+useSignal(signal)        -> Readonly<ShallowRef<T>>           // low-level Signal → ref bridge
+
+// Store factories + raw signals (advanced / direct subscription)
+createLocaleStore(initial?)   // Signal<string> — the writable analog
+refToLocaleSource(ref)        // adapt an existing Ref<string> (Pinia, useState) into a Signal<string>
+t, currentlyLoadedLocale, sTranslations  // raw Signals; prefer the composables in components
+createSignal                  // re-exported generic Signal factory
+canonicalizeLocale(locale)    // re-exported BCP 47 normalizer ('en-us' → 'en-US')
+
+// Components
+<Translate category? custom_id? label? tag? />       // class falls through
+<Phrase category? params? tag? />
+<DontTranslate tag? />
+
+// Direct API client access (vanilla — no Vue concerns)
+LangsysAppAPI
+
+// Types — all sourced from langsys-js-typescript, re-exported for ergonomic imports
+iLangsysInitConfig (the Vue-flavored one — UserLocaleStore is Signal<string>)
+iLangsysResponse, iCategories, iTranslations, iContentBlock, iCountry, iCountryDialCode, iCountryList,
+iCurrency, iCurrencyList, iLanguageName, iLocaleData, iLocaleDefault, iLocaleFlat, iProject,
+TFunction, TranslationParams, ParamPrimitive, ExtractParamKeys, ParamsFor, TArgs, Signal
+```
+
+> Note on the `t()` signature: it is **`t(phrase, category?, params?)`** — phrase first.
+
+## Essential commands
+
+- `npm run dev` — Vite dev server with the demo in `example/`. Needs `.env` at the repo root with `VITE_LANGSYS_PROJECT_ID` and `VITE_LANGSYS_API_KEY` (see `.env.example`).
+- `npm run typecheck` — `tsc --noEmit`. Should be clean before any commit. CI runs it.
+- `npm run build` — `tsup` → builds ESM + CJS + `.d.ts` to `dist/`.
+- `npm run test` — Vitest (`vitest run`), node environment (component tests assert server-rendered output via `vue/server-renderer`).
+- `npm run lint` / `npm run format` — Prettier + ESLint (flat config in `eslint.config.mjs`). Not run in CI.
+
+Note: the Vite/Vitest configs use the `.mts` extension (`vite.config.mts`, `vitest.config.mts`) so they load as ESM on Node versions without `require(esm)` support.
+
+## Local development setup
+
+This package consumes `langsys-js-typescript` as a **published npm dependency** — a semver range (`"langsys-js-typescript": "^x.y.z"`) in `package.json`, resolved from `registry.npmjs.org`. That committed form is canonical. **Never commit** a `file:../langsys-js-typescript` link, an `npm link`, or an `overrides`/`resolutions` redirect: a stale local build silently shadowing the real package has burned us before, and the committed lockfile must always pin the registry tarball (`resolved: https://registry.npmjs.org/…tgz`).
+
+To pick up base-SDK changes, publish the base SDK first, then bump the range here:
+
+```bash
+# in ../langsys-js-typescript: cut a release (npm publish via its CI), then back here:
+npm install langsys-js-typescript@^x.y.z   # bumps the range AND re-pins the lockfile
+npm run typecheck                          # picks up the new types
+```
+
+If you must iterate against an *unpublished* base-SDK build, do it as a **temporary, uncommitted** local override (`npm link ../langsys-js-typescript`, or a throwaway `file:` install) and revert it before committing — never `git add` the resulting `package.json` / `package-lock.json` churn. Before publishing, the dep must be a semver range and the lockfile must resolve to `registry.npmjs.org`.
+
+## Release & publishing
+
+Releases are CI-driven via npm **trusted publishing** (OIDC). There is no long-lived npm token anywhere — neither in the repo, in CI secrets, nor on the maintainer's laptop.
+
+The flow:
+
+1. **Local:** `npm run release` (alias for `./_dev_/publish.sh`) — prompts for the new version, bumps `package.json`, amends the last commit with the version bump, force-pushes `main`, creates a tag `vX.Y.Z`, creates a GitHub Release. **It does not publish to npm.**
+2. **CI:** the `release: published` event triggers `.github/workflows/publish.yml`, which runs `npm ci` → `npm run typecheck` → `npm test` → `npm run build` → `npm publish --provenance`. Publishing happens inside the `npm-publish` GitHub Environment so only tag-ref runs can mint the OIDC token.
+3. **PR/push gate:** `.github/workflows/ci.yml` runs `typecheck` + `test` on every PR and every push to `main`, independent of the release flow.
+
+The three trust-handshake strings must stay in sync, or CI will fail at the publish step:
+
+- GitHub Environment name: `npm-publish`
+- npm trusted publisher config: Environment name `npm-publish`, workflow filename `publish.yml`
+- `.github/workflows/publish.yml`: `environment: npm-publish`
+
+## When making changes
+
+- **Do not reimplement base-SDK behavior here.** API client, lookup logic, missing-token flow, persistence, SSR strategies all belong in `langsys-js-typescript`. If you need to extend any of that, the change goes in the base package and we re-export.
+- **Keep the components to mount/destroy glue.** The DOM walking lives in the vanilla classes in `langsys-js-typescript`. Don't fork the tokenizer here.
+- **Type re-exports go through `index.ts`.** Consumers shouldn't have to reach into `langsys-js-typescript` for routine types.
+- **The composables' reactivity story** depends on the base SDK re-emitting a fresh `TFunction` closure on every translations/locale change *and* returning a stable reference between changes. If components don't update after a locale change, look at the `tSignal` subscriber wiring in `langsys-js-typescript`'s `Translations` class.
+- **Always `shallowRef`, never `ref`, for signal payloads.** A deep proxy over `TFunction` or the catalog breaks identity and wastes reactivity overhead.
+- **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads.
+
+## Testing approach
+
+Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. The live reactive path is exercised by the `example/` playground.
