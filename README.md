@@ -65,6 +65,7 @@ onMounted(() => {
         baseLocale: 'en-US',
         debug: false,
         ssrTokenStrategy: 'client',
+        // apiUrl: 'http://localhost:8000/api', // optional: local/self-hosted Langsys server
     }).then((res) => {
         if (res.status) ready.value = true;
         else error.value = res.errors?.join(', ') ?? 'Init failed';
@@ -82,6 +83,20 @@ onMounted(() => {
 `UserLocaleStore` is a `Signal<string>` — switch it with `setLocale(...)` (from the same `useLocaleStore` call) or `store.set('fr-FR')`, and the SDK reacts. If you'd rather keep the locale store at module scope, `const localeStore = createLocaleStore('en-US')` works too. And if your app already owns the locale in a `ref` (Pinia state, Nuxt's `useState`), adapt it with `refToLocaleSource(localeRef)` instead.
 
 Locale identifiers are canonicalized to BCP 47 by the base SDK (v0.3.0+): lowercase input like `'en-us'` still works, but `useCurrentLocale()` and `detectPreferredLocale()` always return the canonical form (`'en-US'`) — compare against that, or normalize your own values with the re-exported `canonicalizeLocale()`.
+
+### Pointing the SDK at a different API server
+
+By default the SDK talks to `https://api.langsys.dev/api`. To test against a local or self-hosted instance, pass `apiUrl` in `init()` (base SDK 0.5.0+), or call `LangsysAppAPI.setBaseUrl()` **before** `init()`:
+
+```typescript
+import { LangsysApp, LangsysAppAPI } from 'langsys-js-vue';
+
+// Option A — init config (preferred)
+LangsysApp.init({ ..., apiUrl: 'http://localhost:8000/api' });
+
+// Option B — imperative, must run before init()
+LangsysAppAPI.setBaseUrl('http://localhost:8000/api');
+```
 
 ### SSR token strategy
 
@@ -273,6 +288,8 @@ const locales: iLocaleDefault   = await LangsysApp.getLocales();       // { "Eng
 const localeName                = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // "espagnol"
 ```
 
+`getLocaleName()` (the synchronous variant) only reads an in-memory cache, populated once `await LangsysApp.getLocalesData(inLocale)` — or a `getLocaleNameWithLookup()` call — has settled for that display locale. Called before that, it warns and returns `''`; prefer `getLocaleNameWithLookup()` unless you've already loaded the data.
+
 ### Detecting the user's preferred locale
 
 ```typescript
@@ -288,7 +305,7 @@ const supportedLocales = (await LangsysApp.getLocalesFlat()).map((l) => l.code);
 const locale = LangsysApp.detectPreferredLocale(acceptLanguage, supportedLocales);
 ```
 
-The matcher tries exact match first (e.g. `en-US`), then language-only (`en` matches `en-GB`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Results are always canonical BCP 47; it returns `false` if no match.
+The matcher tries exact match first (e.g. `en-US`), then language-only (`en` matches `en-GB`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Results are always canonical BCP 47. When you pass `supportedLocales` and none of the user's preferences match, it returns `false` (base SDK 0.5.0+) — so `detectPreferredLocale(header, supported) || 'en-US'` reliably falls back to your default. Without a `supportedLocales` list, it returns the user's first preference, or `false` when none can be detected.
 
 ### Waiting for translations to load
 
