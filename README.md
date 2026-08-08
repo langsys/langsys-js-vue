@@ -218,6 +218,25 @@ The component:
 
 Why `%name%`: the base SDK normalizes `%name%` back to canonical `{name}` at capture time, so **translators still only ever see `{name}`** and both spellings register the same content block. A single `{name}` actually works in Vue markup (Vue only consumes `{{ }}`, not single braces) — but `%name%` is the portable form the React/Svelte bindings require too, and it avoids the `{{ }}` collision entirely. Only identifiers between the percents match (`%[A-Za-z_][A-Za-z0-9_]*%`), so literal `%` in prose ("50% off", "width: 100%") is left untouched. To keep a *literal* `%WORD%` (e.g. a Windows env var like `%PATH%` in docs text), wrap it in `<DontTranslate>`. The `params` prop is reactive — a changed `count` re-renders via the base SDK's `setParams()`. Placeholders inside `$t()` stay single-brace `{name}` (they live in a JS string, no collision).
 
+**Debug mode catches the `{{ name }}` mistake.** The trap in Vue is reaching for the interpolation you use everywhere else:
+
+```vue
+<!-- WRONG — Vue substitutes {{ name }} before Langsys ever sees the text -->
+<Translate :params="{ name: user.name }">
+    <p>Welcome back, {{ name }}.</p>
+</Translate>
+```
+
+Slot content is compiled by the **parent** component's template compiler, so `{{ name }}` is already replaced with its value by the time `<Translate>` mounts and hands the DOM to the SDK. The token registers with the name baked in, no placeholder survives, and `params` silently does nothing. With `debug: true` the base SDK (≥ 0.4.3) now flags it:
+
+```
+<Translate> received params with no matching placeholder in its content: %name%.
+If you wrote {name} or {{ name }} in markup, your framework's template compiler
+substituted it before Langsys saw the text — write %name% instead.
+```
+
+The check fires for `<Translate>` and `<Phrase>`, treats ICU slots (`{n, plural, …}`) as legitimate, re-runs only when the params *key set* changes (a ticking count won't spam), and is silent in production. Note the warning names both brace spellings because it's shared across bindings — in Vue only `{{ }}` is eaten; a single `{name}` survives and works, so it never trips this warning.
+
 `<Translate>` props: `category?`, `custom_id?`, `label?`, `tag?` (defaults to `translate`), `params?`. `class` and other attributes fall through to the host element.
 
 ### `<Phrase>` — markup-bearing phrases (pluralization)
@@ -238,7 +257,7 @@ import { Phrase } from 'langsys-js-vue';
 
 The inline elements never reach the translator — they're replaced with neutral markup tokens (`{m0o}`…`{m0c}`) and the real framework-owned elements are reconstituted around the translated text at render. This is also what lets reordering languages move emphasis correctly (`<span>White</span> House` → `Casa <span>Blanca</span>`). Pass interpolation values via `params`; keep the markup children static.
 
-> Write the placeholder as `%n%` (the base SDK normalizes it to `{n}` at capture). A single `{n}` also passes through in Vue templates since Vue only consumes `{{ }}` — but `%n%` is the portable form shared with the React/Svelte bindings.
+> Write the placeholder as `%n%` (the base SDK normalizes it to `{n}` at capture). A single `{n}` also passes through in Vue templates since Vue only consumes `{{ }}` — but `%n%` is the portable form shared with the React/Svelte bindings. Writing `{{ n }}` here fails the same way it does in `<Translate>`, and [debug mode flags it](#runtime-values-with-params--write-placeholders-as-name).
 
 `<Phrase>` props: `category?`, `params?`, `tag?` (defaults to `span`). `class` falls through to the host.
 
