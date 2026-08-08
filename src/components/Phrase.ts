@@ -9,7 +9,7 @@ import { PHRASE_MARKER_ATTR, Phrase as VanillaPhrase } from 'langsys-js-typescri
 export interface PhraseProps {
     /** Category the phrase registers under (disambiguation for translators). */
     category?: string;
-    /** Interpolation params — `{n}` for pluralization, `{name}`, etc. */
+    /** Interpolation params. Write placeholders as `%n%` / `%name%` in the markup — the portable form (see the note on the component). */
     params?: Record<string, unknown>;
     /** Host element tag. Defaults to `<span>`. */
     tag?: string;
@@ -22,8 +22,16 @@ export interface PhraseProps {
  * count variable stays next to the noun it pluralizes:
  *
  *   <Phrase category="ProductCard" :params="{ n: reviewCount }">
- *     Based on {n} <strong>reviews</strong>
+ *     Based on %n% <strong>reviews</strong>
  *   </Phrase>
+ *
+ * Write placeholders as `%n%`, not `{{ n }}`: Vue's template compiler
+ * substitutes `{{ n }}` before the SDK ever sees the text, so the placeholder
+ * is gone by mount and `params` silently does nothing (debug mode warns). A
+ * bare `{n}` does survive in Vue — Vue only consumes `{{ }}` — but `%n%` is
+ * the portable form the React/Svelte bindings require, where a literal `{n}`
+ * is eaten by the compiler. The SDK normalizes `%n%` to canonical `{n}` at
+ * capture, so translators only ever see `{n}` either way.
  *
  * The inline markup never reaches the translator — it's replaced with neutral
  * tokens and the real elements are reconstituted at render (see richtext.ts in

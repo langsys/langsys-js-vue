@@ -250,7 +250,7 @@ import { Phrase } from 'langsys-js-vue';
 
 <template>
     <Phrase category="ProductCard" :params="{ n: reviewCount }">
-        Based on {n} <strong>reviews</strong>
+        Based on %n% <strong>reviews</strong>
     </Phrase>
 </template>
 ```
