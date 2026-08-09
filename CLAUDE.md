@@ -42,7 +42,8 @@ Components are authored as `defineComponent` + `h()` render functions in plain `
 
 ```typescript
 // Main entry point — wraps init to accept a Signal<string>, delegates everything else
-LangsysApp.init({ projectid, key, UserLocaleStore, baseLocale?, apiUrl?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale? })
+LangsysApp.init({ projectid, key, UserLocaleStore, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale? })
+// No apiUrl field — point at another server with LangsysAppAPI.setBaseUrl() BEFORE init().
 LangsysApp.t                     // current TFunction (snapshot — not reactive on its own; use useT())
 LangsysApp.getCountries() / getCurrencies() / getDialCodes() / getLocales*() / ...
 LangsysApp.detectPreferredLocale(acceptLanguageHeader?, supportedLocales?)

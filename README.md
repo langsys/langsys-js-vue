@@ -65,7 +65,7 @@ onMounted(() => {
         baseLocale: 'en-US',
         debug: false,
         ssrTokenStrategy: 'client',
-        // apiUrl: 'http://localhost:8000/api', // optional: local/self-hosted Langsys server
+        // For a local/self-hosted server, call LangsysAppAPI.setBaseUrl(url) before init().
     }).then((res) => {
         if (res.status) ready.value = true;
         else error.value = res.errors?.join(', ') ?? 'Init failed';
@@ -86,17 +86,18 @@ Locale identifiers are canonicalized to BCP 47 by the base SDK (v0.3.0+): lowerc
 
 ### Pointing the SDK at a different API server
 
-By default the SDK talks to `https://api.langsys.dev/api`. To test against a local or self-hosted instance, pass `apiUrl` in `init()` (base SDK 0.5.0+), or call `LangsysAppAPI.setBaseUrl()` **before** `init()`:
+By default the SDK talks to `https://api.langsys.dev/api`. To test against a local or self-hosted instance, call `LangsysAppAPI.setBaseUrl()` **before** `init()`:
 
 ```typescript
 import { LangsysApp, LangsysAppAPI } from 'langsys-js-vue';
 
-// Option A — init config (preferred)
-LangsysApp.init({ ..., apiUrl: 'http://localhost:8000/api' });
-
-// Option B — imperative, must run before init()
+// Must run before init() — init() starts fetching immediately.
 LangsysAppAPI.setBaseUrl('http://localhost:8000/api');
+
+await LangsysApp.init({ projectid, key, UserLocaleStore: store });
 ```
+
+> There is **no `apiUrl` field on `init()`** in the current base SDK (`0.4.3`) — `setBaseUrl()` is the only mechanism. TypeScript rejects `apiUrl` as an excess property, but a plain-JS caller would have it silently dropped and keep talking to production, so don't reach for it.
 
 ### SSR token strategy
 
@@ -314,7 +315,7 @@ const localeName                = await LangsysApp.getLocaleNameWithLookup('es-E
 ```typescript
 // Browser: navigator.languages → fallback to navigator.language
 const locale = LangsysApp.detectPreferredLocale();
-// Returns 'en-US', 'fr', etc., or false if not detected
+// Returns 'en-US', 'fr', etc., or false only when nothing can be detected at all
 
 // SSR (server route / middleware): parses Accept-Language
 const locale = LangsysApp.detectPreferredLocale(event.node.req.headers['accept-language']);
@@ -324,7 +325,24 @@ const supportedLocales = (await LangsysApp.getLocalesFlat()).map((l) => l.code);
 const locale = LangsysApp.detectPreferredLocale(acceptLanguage, supportedLocales);
 ```
 
-The matcher tries exact match first (e.g. `en-US`), then language-only (`en` matches `en-GB`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Results are always canonical BCP 47. When you pass `supportedLocales` and none of the user's preferences match, it returns `false` (base SDK 0.5.0+) — so `detectPreferredLocale(header, supported) || 'en-US'` reliably falls back to your default. Without a `supportedLocales` list, it returns the user's first preference, or `false` when none can be detected.
+The matcher tries exact match first (e.g. `en-US`), then language-only (`en` matches `en-GB`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Results are always canonical BCP 47.
+
+**On no match, it does *not* return `false`.** `false` is returned in exactly one case: no user preference could be detected at all (empty `Accept-Language`, no `navigator.languages`). When you pass `supportedLocales` and none of the user's preferences match, it falls back to **the user's own top preference**, canonicalized — an unsupported locale. So this is a trap:
+
+```typescript
+// WRONG — the || branch only fires when nothing was detected, never on a no-match,
+// so an unsupported locale propagates silently.
+const locale = LangsysApp.detectPreferredLocale(header, supported) || 'en-US';
+```
+
+Guard the result against your own list instead:
+
+```typescript
+const detected = LangsysApp.detectPreferredLocale(header, supportedLocales);
+const locale = detected && supportedLocales.includes(detected) ? detected : 'en-US';
+```
+
+Without a `supportedLocales` list, it returns the user's first preference, or `false` when none can be detected.
 
 ### Waiting for translations to load
 
