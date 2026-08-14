@@ -1,6 +1,6 @@
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { PropType } from 'vue';
-import { PHRASE_MARKER_ATTR, Phrase as VanillaPhrase } from 'langsys-js-typescript';
+import { PHRASE_MARKER_ATTR, Phrase as VanillaPhrase, type ParamPrimitive } from 'langsys-js-typescript';
 
 /**
  * Props for the Vue `Phrase` component. Mirrors the React/Svelte components —
@@ -10,7 +10,7 @@ export interface PhraseProps {
     /** Category the phrase registers under (disambiguation for translators). */
     category?: string;
     /** Interpolation params. Write placeholders as `%n%` / `%name%` in the markup — the portable form (see the note on the component). */
-    params?: Record<string, unknown>;
+    params?: Record<string, ParamPrimitive>;
     /** Host element tag. Defaults to `<span>`. */
     tag?: string;
 }
@@ -45,7 +45,7 @@ export const Phrase = defineComponent({
     name: 'Phrase',
     props: {
         category: { type: String, default: '' },
-        params: { type: Object as PropType<Record<string, unknown>>, default: () => ({}) },
+        params: { type: Object as PropType<Record<string, ParamPrimitive>>, default: () => ({}) },
         tag: { type: String, default: 'span' },
     },
     setup(props, { slots }) {
