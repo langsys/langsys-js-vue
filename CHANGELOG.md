@@ -1,3 +1,23 @@
+## 0.2.0
+
+### Breaking
+
+- **`<Phrase>`'s `params` prop no longer accepts non-primitive values.** If you pass an object, array, or function as a param *value* — `:params="{ user: userObject }"` — it is now a compile error. Param values must be `string | number | Date | boolean` (`ParamPrimitive`), matching `<Translate>` and `t()`, which already required this. Nothing changes at runtime: those values were never renderable and interpolated as `[object Object]`, so this turns a silent display bug into a type error. Pass the primitive you actually want to render (`:params="{ name: user.name }"`).
+
+### Changed
+
+- Base SDK floor raised to `langsys-js-typescript@^0.5.0`, which makes the same narrowing to `PhraseOptions.params`. The Vue-side change is compatible with both `0.4.x` and `0.5.0`, so it is a pure dependency bump with no code coupled to it.
+
+### Added
+
+- **Debug diagnostic for eaten placeholders** (inherited from base SDK `0.4.3`, no wrapper code). With `debug: true`, passing `params` whose keys have no matching placeholder in the captured content now warns and names the fix — the fingerprint of a template compiler having substituted the braces before Langsys saw the text. In Vue that means `{{ name }}`: slot content is compiled by the *parent* component's compiler, so the value is already baked in by the time `<Translate>` mounts. Covers `<Translate>` and `<Phrase>`, treats ICU slots (`{n, plural, …}`) as legitimate, re-runs only when the params key-set changes, and is silent in production.
+
+### Fixed
+
+- **`README`: removed `apiUrl` from the `init()` documentation.** No such field exists in the base SDK — `LangsysAppAPI.setBaseUrl()` before `init()` is the only mechanism, and the README had documented it merely as the alternative. TypeScript always rejected `apiUrl` as an excess property, but a plain-JS caller had it silently dropped and kept talking to production while believing they were pointed at localhost. This included a commented-out `apiUrl` line inside the quickstart `init()` block — the copy-paste risk.
+- **`README`: corrected the `detectPreferredLocale()` no-match contract.** It was documented as returning `false` when none of the user's preferences match `supportedLocales`, making `detectPreferredLocale(header, supported) || 'en-US'` a safe fallback. It does not: on a no-match it returns the user's own top preference, canonicalized. `false` is returned only when nothing is detectable at all (empty `Accept-Language`, no `navigator.languages`), so the fallback fires on the wrong one of the two failure modes and an unsupported locale propagates silently. Documents both paths and the guard that works.
+- **`<Phrase>` examples now teach `%n%`, not a bare `{n}`** — in the component doc comments and the README. The bare form happens to work in Vue (only `{{ }}` is consumed), but it contradicted our own portability guidance, and pasted into a React or Svelte app it silently fails.
+
 ## 0.1.1
 
 ### Fixed
