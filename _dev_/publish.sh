@@ -88,7 +88,7 @@ handle_error() {
 # Trap errors
 trap 'handle_error "Unexpected error occurred"' ERR
 
-echo -e "${BLUE}🚀 Langsys JS React Publishing Script${NC}\n"
+echo -e "${BLUE}🚀 Langsys JS Vue Publishing Script${NC}\n"
 
 # Check prerequisites
 log_info "Checking prerequisites..."
@@ -247,7 +247,7 @@ if [ -n "$COMMITS" ]; then
             COMMIT_HASH=$(echo "$commit" | cut -d' ' -f1)
             # Get the full commit message (including body) for better formatting
             FULL_COMMIT_MSG=$(git log --format=%B -n 1 "$COMMIT_HASH")
-            COMMIT_MESSAGES="$COMMIT_MESSAGES- [\`$COMMIT_HASH\`](https://github.com/langsys/langsys-js-vue/commit/$COMMIT_HASH)
+            COMMIT_MESSAGES="$COMMIT_MESSAGES- [\`$COMMIT_HASH\`](https://github.com/langsys/langsys-js-vue/commit/$COMMIT_HASH)  
   $FULL_COMMIT_MSG
 
 "

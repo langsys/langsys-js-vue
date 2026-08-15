@@ -11,7 +11,12 @@ Before using the publishing scripts, ensure you have:
 3. **Git** configured with push access to the repository
 4. You are on the `main` branch with unpushed commits ready to release
 
-> Before the first publish, switch the `langsys-js-typescript` dependency in `package.json` from `file:../langsys-js-typescript` to a published semver range (e.g. `^0.2.0`). The `file:` form is for the local monorepo workflow only.
+> **Before publishing, verify the base-SDK dependency.** `langsys-js-typescript` in `package.json` must be a published semver range (e.g. `^0.5.0`), and `package-lock.json` must resolve it to `registry.npmjs.org`. Never publish with a `file:../langsys-js-typescript` link, an `npm link`, or an `overrides`/`resolutions` redirect in place — a stale local build silently shadowing the real package has burned us before. If you iterated against an unpublished base SDK, revert that override first:
+>
+> ```bash
+> grep langsys-js-typescript package.json    # expect a ^x.y.z range, not file:
+> node -e "console.log(require('./package-lock.json').packages['node_modules/langsys-js-typescript'].resolved)"
+> ```
 
 ## Publishing Script
 
