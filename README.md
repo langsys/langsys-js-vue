@@ -1,5 +1,14 @@
 # Langsys SDK - Vue
 
+[![npm](https://img.shields.io/npm/v/langsys-js-vue.svg?style=flat)](https://www.npmjs.com/package/langsys-js-vue)
+[![build](https://img.shields.io/github/actions/workflow/status/langsys/langsys-js-vue/ci.yml?style=flat)](https://github.com/langsys/langsys-js-vue/actions)
+[![last commit](https://img.shields.io/github/last-commit/langsys/langsys-js-vue.svg?style=flat)](https://github.com/langsys/langsys-js-vue/commits)
+[![commit activity](https://img.shields.io/github/commit-activity/m/langsys/langsys-js-vue.svg?style=flat)](https://github.com/langsys/langsys-js-vue/pulse)
+[![bundle size](https://img.shields.io/bundlejs/size/langsys-js-vue?style=flat)](https://bundlejs.com/?q=langsys-js-vue)
+[![types](https://img.shields.io/npm/types/langsys-js-vue.svg?style=flat)](https://www.npmjs.com/package/langsys-js-vue)
+[![downloads](https://img.shields.io/npm/dm/langsys-js-vue.svg?style=flat)](https://www.npmjs.com/package/langsys-js-vue)
+[![license](https://img.shields.io/npm/l/langsys-js-vue.svg?style=flat)](./LICENSE)
+
 Langsys revolutionizes localization for apps with easy to integrate, realtime, continuous translations. Read more about Langsys Translation Manager [at the website](https://Langsys.dev/).
 
 Integrate the Langsys Translation Manager into your Vue 3, Nuxt, or Vite applications using this SDK.
@@ -7,12 +16,6 @@ Integrate the Langsys Translation Manager into your Vue 3, Nuxt, or Vite applica
 ## Requirements
 
 - **Vue 3.4+** (the reactive layer is built on `shallowRef` + effect-scope disposal).
-
-[![GitHub Release](https://img.shields.io/github/release/langsys/langsys-js-vue.svg?style=flat)]()
-[![GitHub last commit](https://img.shields.io/github/last-commit/langsys/langsys-js-vue.svg?style=flat)]()
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/langsys/langsys-js-vue.svg?style=flat)]()
-[![PR's Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat)](http://makeapullrequest.com)
-[![NPM License](https://img.shields.io/npm/l/all-contributors.svg?style=flat)](https://github.com/langsys/langsys-js-vue/blob/main/LICENSE)
 
 ## How it's layered
 
