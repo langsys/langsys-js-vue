@@ -15,7 +15,7 @@
 
 ### Fixed (documentation)
 
-- **`README`: the harvested-attribute list was both incomplete and wrong.** It named four attributes where the SDK harvests fifteen — omitting `label`, four ARIA strings, and six `data-*` validation messages — and credited `<input>` with a translatable `value`, which only `<button>` has. Now describes the categories, names the canonical `TRANSLATABLE_ATTRIBUTES` constant as the source of truth, and says the list is illustrative rather than exhaustive, so it stops going stale each time the base SDK adds one.
+- **`README`: the harvested-attribute list was incomplete and the `value` rule was wrong.** It named four attributes where `TRANSLATABLE_ATTRIBUTES` carries fifteen, omitting `label`, four ARIA strings, and six `data-*` validation messages. It also described `value` as translated on "button/input", which implies every input — including text fields, where rewriting the value would corrupt what a user typed. The real rule is narrower and deliberate: `value` is translated on `<button>` and on `<input type="submit">` / `<input type="button">` only. Documents `value` as its own mechanism, since it comes from `VALUE_TRANSLATABLE_ELEMENTS` / `VALUE_TRANSLATABLE_INPUT_TYPES` and does not appear in `TRANSLATABLE_ATTRIBUTES` at all — reading that one constant would tell you `value` is never translated.
 
 ### Added
 

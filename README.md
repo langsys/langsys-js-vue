@@ -193,7 +193,9 @@ import { Translate } from 'langsys-js-vue';
 ```
 
 The component:
-- Recursively tokenizes text nodes and translatable attributes: user-visible text (`placeholder`, `alt`, `title`, `label`), the ARIA strings a screen reader speaks (`aria-label`, `aria-placeholder`, `aria-description`, `aria-valuetext`, `aria-roledescription`), and form validation messages (`data-error`, `data-error-message`, `data-validation-message`, `data-invalid-message`, `data-required-message`, `data-pattern-message`) — plus `<button>` `value` and `<option>` text. The canonical list is `TRANSLATABLE_ATTRIBUTES` in `langsys-js-typescript` and grows there, so treat this as illustrative rather than exhaustive.
+- Recursively tokenizes text nodes and translatable attributes: user-visible text (`placeholder`, `alt`, `title`, `label`), the ARIA strings a screen reader speaks (`aria-label`, `aria-placeholder`, `aria-description`, `aria-valuetext`, `aria-roledescription`), and form validation messages (`data-error`, `data-error-message`, `data-validation-message`, `data-invalid-message`, `data-required-message`, `data-pattern-message`). Those come from `TRANSLATABLE_ATTRIBUTES` in `langsys-js-typescript`, which grows over time — treat the list as illustrative, not exhaustive.
+- Translates `value` only where it is a label rather than data: on `<button>`, and on `<input type="submit">` / `<input type="button">`. Every other input type is left alone, so a text field's value is never rewritten. This is a separate mechanism from the attribute list above (`VALUE_TRANSLATABLE_ELEMENTS` / `VALUE_TRANSLATABLE_INPUT_TYPES`) — `value` does **not** appear in `TRANSLATABLE_ATTRIBUTES`.
+- Translates `<option>` text.
 - Captures semantic CSS so translators see the styled appearance in the Translation Manager.
 - Registers the whole thing as a **content block** that translators handle as one unit while still translating the individual phrases inside.
 - Auto re-translates on locale change.
