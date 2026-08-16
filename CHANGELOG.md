@@ -6,7 +6,16 @@
 
 ### Changed
 
-- Base SDK floor raised to `langsys-js-typescript@^0.5.0`, which makes the same narrowing to `PhraseOptions.params`. The Vue-side change is compatible with both `0.4.x` and `0.5.0`, so it is a pure dependency bump with no code coupled to it.
+- **Base SDK floor raised to `langsys-js-typescript@^0.6.4`** (from `^0.4.1` as published in 0.1.1). No wrapper code is coupled to the bump. This is the significant half of the release for existing users: `^0.4.1` resolves `>=0.4.1 <0.5.0`, so **every fix below was unreachable from 0.1.1 by any install or update** — caret on a `0.x` version pins the minor, and only a republish moves it.
+    - `0.6.4` — a missing ICU argument dumped the raw message source onto the page (`{name_gender, select, male {Bienvenido} …} Sarah` instead of `Bienvenide Sarah`). Reachable with no caller mistake: the ICU promoter *introduces* a select argument the source phrase never had, so an app cannot supply it. Any app translating into a gendered locale was exposed. A `null` param also no longer coerces to `0`, which had made a forgotten `count` render identically to a genuinely empty one.
+    - `0.6.3` — `<select>` option text was harvested twice, diverging content-block ids from langsys-php; four attributes added, three of them ARIA strings a screen reader speaks.
+    - `0.6.1` / `0.6.2` — langsys-php marker interop (`data-langsys-phrase` opt-out values, `data-notrans`, case-insensitive `translate="no"` — the last also affects plain Vue apps).
+    - `0.6.0` — `md5` packed UTF-16 code units into byte lanes, so non-ASCII content-block ids diverged from langsys-php and distinct blocks could collide. Migration is automatic and lookup-only; ASCII ids are byte-identical.
+    - `0.5.0` — the `PhraseOptions.params` narrowing this release matches.
+
+### Fixed (documentation)
+
+- **`README`: the harvested-attribute list was both incomplete and wrong.** It named four attributes where the SDK harvests fifteen — omitting `label`, four ARIA strings, and six `data-*` validation messages — and credited `<input>` with a translatable `value`, which only `<button>` has. Now describes the categories, names the canonical `TRANSLATABLE_ATTRIBUTES` constant as the source of truth, and says the list is illustrative rather than exhaustive, so it stops going stale each time the base SDK adds one.
 
 ### Added
 
