@@ -1,6 +1,6 @@
 {
     "name": "langsys-js-vue",
-    "version": "0.1.2",
+    "version": "0.2.0",
     "description": "Vue 3 binding for the Langsys translation SDK — realtime continuous translations with automatic token discovery, delivered as composables and a <Translate> component.",
     "author": "Langsys",
     "license": "MIT",
@@ -63,7 +63,7 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
-        "langsys-js-typescript": "^0.6.4"
+        "langsys-js-typescript": "^0.6.5"
     },
     "devDependencies": {
         "@eslint/js": "^9.0.0",

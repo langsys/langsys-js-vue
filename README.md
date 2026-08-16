@@ -87,6 +87,8 @@ onMounted(() => {
 
 Locale identifiers are canonicalized to BCP 47 by the base SDK (v0.3.0+): lowercase input like `'en-us'` still works, but `useCurrentLocale()` and `detectPreferredLocale()` always return the canonical form (`'en-US'`) — compare against that, or normalize your own values with the re-exported `canonicalizeLocale()`.
 
+> **A malformed locale tag fails silently.** `canonicalizeLocale()` can't reject bad input — it falls back to best-effort casing and returns a string either way, so a typo like `'en-USA'` or `'english'` sails through, misses the catalog, and renders base language. That looks identical to a locale you simply haven't translated yet, which is why it survives testing. Since base SDK `0.6.5`, running with `debug: true` warns when a tag isn't valid BCP 47 (silent in production). If a locale renders untranslated and you can't see why, check the tag before checking the catalog.
+
 ### Pointing the SDK at a different API server
 
 By default the SDK talks to `https://api.langsys.dev/api`. To test against a local or self-hosted instance, call `LangsysAppAPI.setBaseUrl()` **before** `init()`:
