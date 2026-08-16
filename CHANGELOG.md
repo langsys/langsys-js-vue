@@ -1,4 +1,4 @@
-## 0.2.0
+## 0.2.0 - unreleased
 
 ### Breaking
 
@@ -18,13 +18,13 @@
 - **`README`: corrected the `detectPreferredLocale()` no-match contract.** It was documented as returning `false` when none of the user's preferences match `supportedLocales`, making `detectPreferredLocale(header, supported) || 'en-US'` a safe fallback. It does not: on a no-match it returns the user's own top preference, canonicalized. `false` is returned only when nothing is detectable at all (empty `Accept-Language`, no `navigator.languages`), so the fallback fires on the wrong one of the two failure modes and an unsupported locale propagates silently. Documents both paths and the guard that works.
 - **`<Phrase>` examples now teach `%n%`, not a bare `{n}`** — in the component doc comments and the README. The bare form happens to work in Vue (only `{{ }}` is consumed), but it contradicted our own portability guidance, and pasted into a React or Svelte app it silently fails.
 
-## 0.1.1
+## 0.1.1 - 2026-07-09
 
 ### Fixed
 
 - Point `repository`, `homepage`, and `bugs` URLs at the `langsys` org — the package's permanent home — after the repo migrated from `gcapra/langsys-js-vue` to [`github.com/langsys/langsys-js-vue`](https://github.com/langsys/langsys-js-vue).
 
-## 0.1.0
+## 0.1.0 - 2026-07-09
 
 Initial release. `langsys-js-vue` is a thin Vue 3 binding over the framework-agnostic [`langsys-js-typescript`](https://github.com/langsys/langsys-js-typescript) package — the Vue sibling of `langsys-js-react` and `langsys-js-svelte`. The base SDK owns the API client, translation lifecycle, token discovery, DOM tokenizer, and SSR-aware token strategies; this package adds only the Vue-native concerns.
 
