@@ -31,6 +31,7 @@ CHANGES_COMMITTED=false
 CHANGES_PUSHED=false
 TAG_CREATED=false
 TAG_PUSHED=false
+RELEASE_DATE=""
 
 # Function to rollback changes
 rollback() {
@@ -41,6 +42,13 @@ rollback() {
         if [ -f "package.json" ]; then
             sed -i.bak "s/\"version\": \"$NEW_VERSION\"/\"version\": \"$ORIGINAL_VERSION\"/" package.json
             rm -f package.json.bak
+        fi
+
+        # Un-stamp the CHANGELOG heading if we dated it this run. Guarded on
+        # RELEASE_DATE being set, so a failure before the stamp leaves it alone.
+        if [ -n "$RELEASE_DATE" ] && [ -f "CHANGELOG.md" ]; then
+            sed -i.bak "s/^## $NEW_VERSION - $RELEASE_DATE\$/## $NEW_VERSION - unreleased/" CHANGELOG.md
+            rm -f CHANGELOG.md.bak
         fi
 
         # Reset git if changes were committed (restore original commit before amend)
@@ -212,6 +220,39 @@ else
 fi
 log_success "Updated package.json version to $NEW_VERSION"
 
+# Stamp the CHANGELOG heading with the release date.
+#
+# Write entries as "## X.Y.Z - unreleased"; this fills in the date here, seconds
+# before the tag and publish. A date typed at authoring time records when it was
+# TYPED, not when it shipped — and dating a version that has not published yet is
+# a guess, which is how three sibling repos ended up with entries a month early.
+# "unreleased" is therefore the correct value to write by hand, but it has a
+# validity window that closes the instant the release goes out, and nothing was
+# watching that boundary: 0.2.0 shipped to npm as `latest` with its own changelog
+# still calling it unreleased. Stamping here is what watches the boundary.
+#
+# CHANGELOG.md is in this package's `files` array, so the heading reaches
+# consumers on npmjs.com — the enforcement below is deliberately strict for that
+# reason. The Svelte binding warns and continues instead, correctly, because it
+# publishes only dist/ and a missed stamp cannot reach anyone there.
+RELEASE_DATE=$(date -u +%Y-%m-%d)
+if grep -q "^## $NEW_VERSION - unreleased\$" CHANGELOG.md; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^## $NEW_VERSION - unreleased\$/## $NEW_VERSION - $RELEASE_DATE/" CHANGELOG.md
+    else
+        sed -i "s/^## $NEW_VERSION - unreleased\$/## $NEW_VERSION - $RELEASE_DATE/" CHANGELOG.md
+    fi
+    log_success "Stamped CHANGELOG heading for $NEW_VERSION with $RELEASE_DATE"
+elif grep -q "^## $NEW_VERSION " CHANGELOG.md; then
+    log_warning "CHANGELOG section for $NEW_VERSION already carries a date — leaving it alone"
+    log_warning "  (verify it against: npm view $(node -p "require('./package.json').name") time --json)"
+else
+    log_warning "No CHANGELOG section found for $NEW_VERSION — releasing an undocumented version"
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    [[ $REPLY =~ ^[Yy]$ ]] || handle_error "Aborted: add a CHANGELOG section for $NEW_VERSION first"
+fi
+
 # Run npm install to update package-lock.json
 log_info "Running npm install to update package-lock.json..."
 npm install
@@ -222,7 +263,7 @@ npm run build
 
 # Amend the last commit with version bump
 log_info "Amending last commit with version bump..."
-git add package.json package-lock.json
+git add package.json package-lock.json CHANGELOG.md
 
 # Get the current commit message
 LAST_COMMIT_MESSAGE=$(git log -1 --pretty=%B)
