@@ -139,15 +139,28 @@ if [ "$CURRENT_BRANCH" != "main" ]; then
     handle_error "You must be on the main branch to publish. Current branch: $CURRENT_BRANCH"
 fi
 
+# Fetch latest from remote.
+#
+# ORDERING IS LOAD-BEARING: this must precede BOTH checks below, because both
+# read origin/main. Computing the ahead-count against a stale remote-tracking ref
+# over-counts, and over-counting is not a harmless imprecision — it lets the
+# script run when there is nothing legitimate to release. If HEAD was already
+# pushed from another machine, a stale ref reports "1 unpushed commit", the
+# divergence guard then passes honestly (nothing to be behind), and the script
+# amends a commit that is already on the remote and force-pushes the rewrite.
+# Orphans that commit's tag and provenance with no second party involved, and
+# unlike the divergence case it leaves no trace in `git status` to notice.
+git fetch > /dev/null 2>&1
+
 # Check for unpushed commits
 UNPUSHED_COMMITS=$(git rev-list origin/main..HEAD --count)
 if [ "$UNPUSHED_COMMITS" = "0" ]; then
-    handle_error "No unpushed commits found. Please make your changes and commit them before publishing."
+    handle_error "No unpushed commits found. Please make your changes and commit them before publishing.
+  (If you believe you have unreleased work, check whether it was already pushed
+  from another machine — this script amends HEAD to embed the version bump, and
+  amending a published commit IS a rewrite of it.)"
 fi
 log_success "Found $UNPUSHED_COMMITS unpushed commit(s)"
-
-# Fetch latest from remote
-git fetch > /dev/null 2>&1
 
 # LOAD-BEARING — do not delete this as "redundant to --force-with-lease".
 # The push near the end of this script uses --force-with-lease, which sounds like it
