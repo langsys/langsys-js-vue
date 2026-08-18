@@ -1,3 +1,13 @@
+## 0.2.1 - 2026-08-18
+
+### Fixed (documentation)
+
+Documentation-only release. No code changes — `dist/` is identical to 0.2.0.
+
+- **The `0.2.0` changelog heading shipped reading `unreleased`** while npm listed `0.2.0` as `latest`. `CHANGELOG.md` is in this package's `files` array, so the contradiction was visible on npmjs.com. The heading is now dated, and the release script stamps the date at publish time so a hand-written `unreleased` cannot survive a release again.
+- **`0.1.2` had no changelog entry.** Documented as what it was: a version bump published from a branch point predating the 0.2.0 fixes, which re-published two documentation defects that existed only in git.
+- **The `apiUrl` note cited "the current base SDK (`0.4.3`)"** while 0.2.0 depends on `^0.6.5`, so a reader checking `0.4.3` would draw the wrong conclusion about which versions the note covers. `apiUrl` is absent from every released base SDK, so the claim is version-independent and now says so.
+
 ## 0.2.0 - 2026-08-18
 
 ### Breaking
