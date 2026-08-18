@@ -1,4 +1,4 @@
-## 0.2.0 - unreleased
+## 0.2.0 - 2026-08-18
 
 ### Breaking
 
@@ -27,6 +27,10 @@
 - **`README`: removed `apiUrl` from the `init()` documentation.** No such field exists in the base SDK — `LangsysAppAPI.setBaseUrl()` before `init()` is the only mechanism, and the README had documented it merely as the alternative. TypeScript always rejected `apiUrl` as an excess property, but a plain-JS caller had it silently dropped and kept talking to production while believing they were pointed at localhost. This included a commented-out `apiUrl` line inside the quickstart `init()` block — the copy-paste risk.
 - **`README`: corrected the `detectPreferredLocale()` no-match contract.** It was documented as returning `false` when none of the user's preferences match `supportedLocales`, making `detectPreferredLocale(header, supported) || 'en-US'` a safe fallback. It does not: on a no-match it returns the user's own top preference, canonicalized. `false` is returned only when nothing is detectable at all (empty `Accept-Language`, no `navigator.languages`), so the fallback fires on the wrong one of the two failure modes and an unsupported locale propagates silently. Documents both paths and the guard that works.
 - **`<Phrase>` examples now teach `%n%`, not a bare `{n}`** — in the component doc comments and the README. The bare form happens to work in Vue (only `{{ }}` is consumed), but it contradicted our own portability guidance, and pasted into a React or Svelte app it silently fails.
+
+## 0.1.2 - 2026-08-17
+
+No functional change. A version bump published from a branch point that predated the fixes in 0.2.0, so it re-published documentation defects that existed only in git — the nonexistent `apiUrl` init field and the inverted `detectPreferredLocale` no-match contract. Both are corrected in 0.2.0. `dist/` is byte-identical to 0.1.1; the dependency remained `^0.4.1`.
 
 ## 0.1.1 - 2026-07-09
 

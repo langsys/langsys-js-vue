@@ -102,7 +102,7 @@ LangsysAppAPI.setBaseUrl('http://localhost:8000/api');
 await LangsysApp.init({ projectid, key, UserLocaleStore: store });
 ```
 
-> There is **no `apiUrl` field on `init()`** in the current base SDK (`0.4.3`) — `setBaseUrl()` is the only mechanism. TypeScript rejects `apiUrl` as an excess property, but a plain-JS caller would have it silently dropped and keep talking to production, so don't reach for it.
+> There is **no `apiUrl` field on `init()`** in any released version of the base SDK — `setBaseUrl()` is the only mechanism. TypeScript rejects `apiUrl` as an excess property, but a plain-JS caller would have it silently dropped and keep talking to production, so don't reach for it.
 
 ### SSR token strategy
 
