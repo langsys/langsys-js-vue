@@ -152,16 +152,15 @@ fi
 # unlike the divergence case it leaves no trace in `git status` to notice.
 git fetch > /dev/null 2>&1
 
-# Check for unpushed commits
-UNPUSHED_COMMITS=$(git rev-list origin/main..HEAD --count)
-if [ "$UNPUSHED_COMMITS" = "0" ]; then
-    handle_error "No unpushed commits found. Please make your changes and commit them before publishing.
-  (If you believe you have unreleased work, check whether it was already pushed
-  from another machine — this script amends HEAD to embed the version bump, and
-  amending a published commit IS a rewrite of it.)"
-fi
-log_success "Found $UNPUSHED_COMMITS unpushed commit(s)"
-
+# The divergence guard runs BEFORE the ahead-check, and the order is about the
+# error message rather than safety — both orders are safe. They differ in exactly
+# one state: behind, with nothing of your own to release (ahead=0, behind=1).
+# Ahead-check first reports "No unpushed commits found", sending someone to commit
+# work they haven't got; guard first names the actual problem and the rebase. That
+# state is a recurring one here, not a hypothetical — a co-maintainer publishes
+# this package from a second machine, so "you are behind" is the normal way this
+# repo goes stale.
+#
 # LOAD-BEARING — do not delete this as "redundant to --force-with-lease".
 # The push near the end of this script uses --force-with-lease, which sounds like it
 # already guards against clobbering someone else's work. It does not, here. The lease
@@ -185,6 +184,16 @@ if [ "$BEHIND_COMMITS" != "0" ]; then
   then re-run the release. (Someone else has pushed to main — check with them before
   rebasing, in case a release is already in flight.)"
 fi
+
+# Check for unpushed commits
+UNPUSHED_COMMITS=$(git rev-list origin/main..HEAD --count)
+if [ "$UNPUSHED_COMMITS" = "0" ]; then
+    handle_error "No unpushed commits found. Please make your changes and commit them before publishing.
+  (If you believe you have unreleased work, check whether it was already pushed
+  from another machine — this script amends HEAD to embed the version bump, and
+  amending a published commit IS a rewrite of it.)"
+fi
+log_success "Found $UNPUSHED_COMMITS unpushed commit(s)"
 
 log_success "All prerequisites met"
 
