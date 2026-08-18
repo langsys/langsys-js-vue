@@ -141,6 +141,30 @@ log_success "Found $UNPUSHED_COMMITS unpushed commit(s)"
 # Fetch latest from remote
 git fetch > /dev/null 2>&1
 
+# LOAD-BEARING — do not delete this as "redundant to --force-with-lease".
+# The push near the end of this script uses --force-with-lease, which sounds like it
+# already guards against clobbering someone else's work. It does not, here. The lease
+# compares the real origin/main against our remote-tracking ref — and the fetch above
+# has just refreshed that ref. A colleague's commit is therefore already "expected" by
+# the time the lease is evaluated, so the lease permits the very overwrite it exists to
+# prevent. Verified: the push reports "(forced update)" and the commit is gone.
+#
+# The blast radius is not limited to git. This script also tags, creates a GitHub
+# Release, and triggers an npm publish. Dropping a commit leaves a published version,
+# its tag, and its signed provenance attestation all pointing at a SHA unreachable from
+# any branch — an attestation that cannot be traced to a commit is worse than none,
+# because it still looks verifiable.
+BEHIND_COMMITS=$(git rev-list HEAD..origin/main --count)
+if [ "$BEHIND_COMMITS" != "0" ]; then
+    handle_error "origin/main has $BEHIND_COMMITS commit(s) that you do not have locally.
+  Releasing now would force-push over them. Run:
+
+      git rebase origin/main
+
+  then re-run the release. (Someone else has pushed to main — check with them before
+  rebasing, in case a release is already in flight.)"
+fi
+
 log_success "All prerequisites met"
 
 # Get current version
