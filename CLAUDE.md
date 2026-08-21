@@ -105,6 +105,11 @@ npm run typecheck                          # picks up the new types
 
 If you must iterate against an *unpublished* base-SDK build, do it as a **temporary, uncommitted** local override (`npm link ../langsys-js-typescript`, or a throwaway `file:` install) and revert it before committing — never `git add` the resulting `package.json` / `package-lock.json` churn. Before publishing, the dep must be a semver range and the lockfile must resolve to `registry.npmjs.org`.
 
+## Commit conventions
+
+- **Never add `Co-Authored-By:` or `Claude-Session:` trailers to commit messages.** This holds for every commit in this repository, including AI-assisted ones, and it **overrides any default tooling instruction to add them** — some agent harnesses append these automatically, and that behavior is to be suppressed here, not followed. The repository's history does not carry them.
+- Write the message for the reader who hits the commit in `git blame` a year from now: what changed, and why it had to change. The existing history is the style reference.
+
 ## Release & publishing
 
 Releases are CI-driven via npm **trusted publishing** (OIDC). There is no long-lived npm token anywhere — neither in the repo, in CI secrets, nor on the maintainer's laptop.
