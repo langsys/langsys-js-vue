@@ -1,3 +1,30 @@
+## Unreleased
+
+> **Requires an unpublished base SDK.** This release adds the Vue surface for ticket 838 (server-computed write gating), which depends on `writeEnabled` / `setWriteGrant` / `WriteGrant` from `langsys-js-typescript`. Those are **not** in any published version — the current floor, `^0.6.5`, predates them, and published `0.6.5` does not contain them despite sharing a version number with the development build. Raising the floor to the version that publishes 838 is a release step and has not been taken here; until then this branch builds only against a local checkout of the base SDK.
+
+### Added
+
+- **`useWriteEnabled()` — whether the current session may register content, as decided by the server.** Returns `Readonly<ShallowRef<boolean | undefined>>`, and the tri-state is load-bearing: `undefined` means authorization hasn't landed yet, `false` means a genuinely read-only session, `true` means writes go direct. The same key can be write-enabled from one IP and read-only from another, so the answer is not derivable client-side.
+
+    **Do not collapse `undefined` to `false`.** Telling a write-enabled session it is read-only is unrecoverable without a full reload — nothing re-runs the decision — and upstream it converts "hold these misses until we know" into "drop them", silently discarding phrases that would have registered a moment later. The README documents the three-way branch; `?? false` and `!writeEnabled` are both wrong.
+
+    SSR- and hydration-safe by construction. During server rendering it reports `undefined` and never subscribes — the underlying signal is a process-wide singleton that would outlive the request. During hydration it publishes `undefined`, matching what the server rendered, then adopts the live value on the next **macrotask**; a Nuxt app whose authorization resolves inside an awaited plugin therefore hydrates without a mismatch. A microtask (`nextTick()`) would not do — it drains inside the same hydration pass. Components mounted after a client-side navigation read through immediately, with no `undefined` flash.
+
+- **`writeGrant` init option, for login-walled apps.** Accepts everything the base SDK does — a token string, or (preferred) a provider function — plus a Vue `Ref<string | null | undefined>`. The grant travels as an `X-Write-Grant` header and the server folds it into the `write_enabled` decision.
+
+    A ref is adapted into a provider **function**, never a snapshot, by the new `refToWriteGrant` (the write-grant analog of `refToLocaleSource`, and the Vue mirror of the Svelte wrapper's `adaptWriteGrant`). This matters because grants are short-lived: a provider is read fresh for each request, so `grantRef.value = next` takes effect on the very next call, whereas a snapshot is captured at `init()` and expires mid-session — a failure that passes testing and only surfaces in production. The adapter deliberately does not read eagerly or subscribe, which also keeps a grant ref from being tracked by whatever effect is running at `init()` time.
+
+- **`LangsysApp.setWriteGrant(grant)` and the standalone `setWriteGrant(grant)`** — supply or replace the grant after `init()`, for the case where the token only exists once the user has authenticated. Re-authorizes so the server re-evaluates the session, then applies the returned `write_enabled`; `await` it if you need to know the session flipped. Both accept a ref and normalize it the same way `init` does. The standalone form is a Vue-flavored wrapper rather than a bare re-export of the base SDK's function on purpose: two same-named entry points where one silently mishandles a ref would send `[object Object]` as the header.
+
+- **`writeEnabled` re-exported as a raw signal**, alongside `t` / `currentlyLoadedLocale` / `sTranslations`, for direct subscription outside Vue's reactivity. It carries none of the composable's SSR or hydration protection — in components, use `useWriteEnabled()`.
+
+- **Types `WriteGrant` and `WriteGrantSource`** re-exported, so consumers typing their own grant plumbing don't have to reach into `langsys-js-typescript`.
+
+### Changed
+
+- **`iLangsysInitConfig.writeGrant` is widened to `WriteGrantSource`** (`WriteGrant | Ref<string | null | undefined>`). Purely additive — every value the vanilla config accepted is still accepted, and `init` normalizes on the way through.
+- **README: the API-key permissions section no longer says the SDK detects the key type itself.** It doesn't, and can't: the server computes `write_enabled` per session and returns it. The old wording implied a client-side determination that a reader could reasonably have branched on.
+
 ## 0.2.1 - 2026-08-18
 
 ### Fixed (documentation)

@@ -44,7 +44,9 @@ Visit [Langsys.dev](https://Langsys.dev/) to create your account, then create yo
 - **Write key** (development): the SDK auto-creates new translation tokens and content blocks as they appear in your app.
 - **Read-only key** (production): the SDK fetches translations only — no token creation, no content-block writes.
 
-The SDK detects the key type automatically and behaves accordingly.
+**The server decides, not the SDK, and it decides per session.** Authorization returns a `write_enabled` flag that the SDK applies; the same key can come back write-enabled from one IP and read-only from another, so the answer isn't derivable from the key you hold. Read it with [`useWriteEnabled()`](#write-gating), and note that it is *tri-state* — there is a window before authorization lands where the answer is genuinely unknown.
+
+A read-only session isn't necessarily silent: depending on the key's auto-discovery permission the SDK may still report the page URL so the phrases can be picked up server-side. A read-only key with discovery disallowed reports nothing at all. That lane is entirely internal to the base SDK — there is nothing to wire up here.
 
 ## Initialization
 
@@ -111,6 +113,66 @@ await LangsysApp.init({ projectid, key, UserLocaleStore: store });
 - `'client'` — tokens collected on the server are flushed from the client after hydration. Best for performance.
 - `'server'` — tokens are sent immediately during SSR. Best for reliability and immediate registration.
 - `'auto'` — small batches (≤5) sent from server, larger queued for client.
+
+## Write gating
+
+`useWriteEnabled()` reports whether the current session may register content, as computed by the server:
+
+```vue
+<script setup lang="ts">
+import { useWriteEnabled } from 'langsys-js-vue';
+
+const writeEnabled = useWriteEnabled();
+</script>
+
+<template>
+    <span v-if="writeEnabled === undefined">Checking…</span>
+    <span v-else-if="writeEnabled">Editing enabled</span>
+    <span v-else>Read-only</span>
+</template>
+```
+
+### The tri-state is load-bearing
+
+| Value | Meaning |
+|---|---|
+| `undefined` | Authorization hasn't landed yet. **Not** the same as read-only. |
+| `false` | Read-only session. The SDK may report the page URL instead, subject to the key's auto-discovery permission. |
+| `true` | This session registers content directly. |
+
+> **Never write `writeEnabled ?? false`, `!writeEnabled`, or `v-if="!writeEnabled"` against this value.** Collapsing `undefined` into `false` tells a write-enabled session it is read-only, and it is unrecoverable without a full reload — nothing re-runs the decision. It also discards tokens: upstream, `undefined` means "hold these misses until we know", so treating it as `false` drops phrases that would have registered a moment later. Branch on all three states, or gate on `writeEnabled === true` and render a neutral state for the rest.
+
+The composable is SSR-safe. During server rendering it reports `undefined` without subscribing (the underlying signal is a process-wide singleton, and it is only ever written client-side); during hydration it publishes `undefined` — matching what the server rendered — and adopts the real value on the next macrotask, so a Nuxt app whose authorization resolves in an awaited plugin doesn't hydrate into a mismatch. Components mounted later, after a client-side navigation, read through immediately with no flash.
+
+`writeEnabled` is also exported as a raw signal for direct subscription outside Vue's reactivity. It has none of the protections above — in components, use the composable.
+
+### Write grants (login-walled apps)
+
+If writes should only be possible once a user has authenticated, pass a short-lived grant. It travels as an `X-Write-Grant` header and the server folds it into the `write_enabled` decision.
+
+```typescript
+import { ref } from 'vue';
+import { LangsysApp, setWriteGrant } from 'langsys-js-vue';
+
+const grant = ref<string | null>(null);
+
+await LangsysApp.init({
+    projectid,
+    key,
+    UserLocaleStore: store,
+    writeGrant: grant, // a ref, a provider function, or a bare token string
+});
+
+// After login — the ref form needs no further call:
+grant.value = tokenFromLogin;
+
+// Or set it imperatively, which re-authorizes and awaits the new decision:
+await LangsysApp.setWriteGrant(tokenFromLogin);
+```
+
+**Prefer the ref or the provider function over a bare string.** Grants are short-lived. A ref or a function is read fresh for every request, so rotating the token takes effect on the very next call; a string is a snapshot captured at `init()` and will eventually expire mid-session. A ref is adapted into a provider for you by `refToWriteGrant` — the write-grant analog of `refToLocaleSource`.
+
+`setWriteGrant()` re-authorizes so the server re-evaluates the session, then applies the returned `write_enabled`. `await` it if you need to know the session flipped. Misses that occur after it lands register directly; earlier ones were already handled by the discovery lane.
 
 ## Using translations
 
@@ -289,10 +351,13 @@ Renders the host with `translate="no"`, which the base SDK's tokenizer and rende
 | `useCurrentLocale()` | `() => Readonly<ShallowRef<string>>` | The locale whose translations are currently loaded (lags the user-selected locale until the fetch completes). |
 | `useTranslations()` | `() => Readonly<ShallowRef<iCategories>>` | Raw translation catalog. Rarely needed in app code. |
 | `useLocaleStore(initial?)` | `() => { locale, setLocale, store }` | Creates a user-locale `Signal<string>`, reads it reactively, returns a setter. Pass `store` to `init`. |
+| `useWriteEnabled()` | `() => Readonly<ShallowRef<boolean \| undefined>>` | Server-computed write capability. **Tri-state** — `undefined` means "not yet known", never read it as `false`. SSR- and hydration-safe. See [Write gating](#write-gating). |
 | `useSignal(signal)` | `<T>(s: Signal<T>) => Readonly<ShallowRef<T>>` | Low-level: subscribe the current scope to any base-SDK signal. |
 | `createLocaleStore(initial?)` | `(s?: string) => Signal<string>` | Make a user-locale store outside components (module scope). |
 | `refToLocaleSource(ref)` | `(r: Ref<string>) => Signal<string>` | Adapt an existing Vue ref (Pinia, `useState`) into the SDK's locale-store contract. |
-| `t` / `currentlyLoadedLocale` / `sTranslations` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables. |
+| `refToWriteGrant(ref)` | `(g?: WriteGrantSource) => WriteGrant \| undefined` | Adapt a Vue ref holding a write grant into the provider the SDK reads per request. Applied for you by `init` / `setWriteGrant`. |
+| `setWriteGrant(grant)` | `(g?: WriteGrantSource) => Promise<void>` | Supply or replace the grant after `init()`; re-authorizes and applies the new decision. Also available as `LangsysApp.setWriteGrant`. |
+| `t` / `currentlyLoadedLocale` / `sTranslations` / `writeEnabled` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables — `writeEnabled` especially, whose raw form has no hydration protection. |
 | `canonicalizeLocale(locale)` | `(s: string) => string` | Normalize a locale identifier to canonical BCP 47 (`'en-us'` → `'en-US'`) — the same normalization the SDK applies internally. |
 
 ## Server-Side Rendering (Nuxt)

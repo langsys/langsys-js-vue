@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { effectScope, ref } from 'vue';
+import { computed, customRef, effectScope, isRef, ref, shallowRef } from 'vue';
 import { createSignal } from 'langsys-js-typescript';
-import { createLocaleStore, refToLocaleSource, useSignal } from './adapters.js';
+import { createLocaleStore, refToLocaleSource, refToWriteGrant, useSignal } from './adapters.js';
 
 /**
  * Coverage for the runtime glue this package adds: the locale store (input
@@ -95,5 +95,128 @@ describe('refToLocaleSource', () => {
         unsub();
         locale.value = 'it-IT';
         expect(seen).toEqual(['en-US', 'fr-FR', 'de-DE', 'de-de']); // watcher stopped
+    });
+});
+
+describe('refToWriteGrant', () => {
+    it('passes undefined through, so "no grant" stays no grant', () => {
+        expect(refToWriteGrant(undefined)).toBeUndefined();
+    });
+
+    it('passes a plain token string through unchanged', () => {
+        expect(refToWriteGrant('jwt-token')).toBe('jwt-token');
+    });
+
+    it('passes a provider function through by identity, not re-wrapped', () => {
+        const provider = () => 'from-provider';
+        expect(refToWriteGrant(provider)).toBe(provider);
+    });
+
+    /**
+     * The load-bearing one. A ref must become a PROVIDER, never a snapshot: the
+     * base SDK resolves the grant per request and caches it nowhere, so reading
+     * through on each call is what makes `grantRef.value = next` take effect on
+     * the very next request. Snapshotting would look like a working adapter
+     * while producing a grant that can never refresh — and because grants are
+     * short-lived, that passes testing and expires in production.
+     */
+    it('turns a ref into a provider that re-reads on every call', () => {
+        const grantRef = ref('first');
+
+        // The failing case first, so the check below is evidence rather than
+        // decoration: a snapshotting adapter is frozen at its adapt-time value.
+        const snapshotting = (g: typeof grantRef) => (isRef(g) ? g.value : g);
+        const snapshot = snapshotting(grantRef);
+        grantRef.value = 'second';
+        expect(snapshot).toBe('first'); // stale — this is the bug being excluded
+
+        // The passing case: same ref, same mutation, read through on each call.
+        grantRef.value = 'first';
+        const grant = refToWriteGrant(grantRef);
+        expect(typeof grant).toBe('function');
+        expect((grant as () => string)()).toBe('first');
+
+        grantRef.value = 'second';
+        expect((grant as () => string)()).toBe('second');
+
+        grantRef.value = 'third';
+        expect((grant as () => string)()).toBe('third');
+    });
+
+    it('accepts a computed or shallowRef, not just a writable ref', () => {
+        const base = ref('tok');
+        const derived = computed(() => `${base.value}-derived`);
+        expect((refToWriteGrant(derived) as () => string)()).toBe('tok-derived');
+
+        base.value = 'next';
+        expect((refToWriteGrant(derived) as () => string)()).toBe('next-derived');
+
+        const shallow = shallowRef<string | null>('shallow-tok');
+        expect((refToWriteGrant(shallow) as () => string | null)()).toBe('shallow-tok');
+    });
+
+    it('propagates a ref holding null/undefined as a valid "no grant yet"', () => {
+        const grantRef = ref<string | null | undefined>(undefined);
+        const grant = refToWriteGrant(grantRef) as () => string | null | undefined;
+
+        expect(grant()).toBeUndefined();
+        grantRef.value = null;
+        expect(grant()).toBeNull();
+        grantRef.value = 'now-logged-in';
+        expect(grant()).toBe('now-logged-in');
+    });
+
+    /**
+     * The second snapshot shape: reading at adapt time rather than call time.
+     * It produces a provider — so the "is it a function" check above passes —
+     * but the value inside was captured once, and it also means the grant ref
+     * gets tracked by whatever effect happens to be running at `init()`.
+     */
+    it('does not read the ref eagerly — it is read only when the provider is called', () => {
+        let reads = 0;
+        let value = 'x';
+        const tracked = customRef<string>((track, trigger) => ({
+            get() {
+                reads++;
+                track();
+                return value;
+            },
+            set(v) {
+                value = v;
+                trigger();
+            },
+        }));
+
+        // The failing case: an adapter that reads on the way through. It still
+        // returns a function, so only the read COUNT distinguishes it.
+        const eager = (g: typeof tracked) => {
+            const captured = g.value;
+            return () => captured;
+        };
+        eager(tracked);
+        expect(reads).toBe(1); // read before anyone asked for the grant
+
+        reads = 0;
+        const grant = refToWriteGrant(tracked);
+        expect(reads).toBe(0); // nothing read at adapt time
+
+        expect((grant as () => string)()).toBe('x');
+        expect(reads).toBe(1); // read exactly once, when the SDK asked
+
+        (grant as () => string)();
+        expect(reads).toBe(2); // and again on the next request, never memoized
+    });
+
+    it('leaves the returned provider usable outside any reactive scope', () => {
+        const grantRef = ref('tok');
+        const grant = refToWriteGrant(grantRef) as () => string;
+        const scope = effectScope();
+        scope.run(() => grant());
+        scope.stop();
+
+        // The SDK calls this from request code, long after any scope is gone.
+        expect(grant()).toBe('tok');
+        grantRef.value = 'rotated';
+        expect(grant()).toBe('rotated');
     });
 });

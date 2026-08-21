@@ -13,13 +13,14 @@ It is the Vue sibling of [`langsys-js-react`](https://github.com/langsys/langsys
 ```
 src/
     index.ts                  # public exports — LangsysApp wrapper, composables, components, raw signals, type re-exports
-    adapters.ts               # useSignal (Signal → shallowRef), createLocaleStore, refToLocaleSource (Ref → Signal)
-    composables.ts            # useT / useCurrentLocale / useTranslations / useLocaleStore
+    adapters.ts               # useSignal (Signal → shallowRef), createLocaleStore, refToLocaleSource (Ref → Signal), refToWriteGrant (Ref → provider)
+    composables.ts            # useT / useCurrentLocale / useTranslations / useLocaleStore / useWriteEnabled
     components/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
         Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
         DontTranslate.ts      # presentational translate="no" host
     adapters.test.ts          # coverage for the adapter contracts
+    composables.test.ts       # useWriteEnabled — SSR/hydration/tri-state coverage
     components.test.ts        # structural (SSR-rendered) component coverage
 example/                      # Vite playground (npm run dev) — not published
 ```
@@ -34,20 +35,25 @@ Components are authored as `defineComponent` + `h()` render functions in plain `
 
 2. **Composables (`useT`, `useCurrentLocale`, `useTranslations`)** — each wraps a base-SDK signal with `useSignal`: seed a `shallowRef` from `signal.get()`, subscribe (the base `subscribe` fires synchronously and returns an unsubscribe function), and dispose with the current effect scope (`onScopeDispose`, guarded by `getCurrentScope()` so module-level use works too). `shallowRef` is required — signal payloads like `TFunction` must not be deeply proxied, and the signal replaces the whole value on every change.
 
-3. **`useLocaleStore(initial)`** — creates one `Signal<string>` per `setup()` call (setup runs once per component instance, so no memoization dance is needed), subscribes with `useSignal`, and returns `{ locale, setLocale, store }`. Pass `store` to `init`; drive the locale with `setLocale`.
+3. **`useWriteEnabled()` — the one composable that does *not* just wrap `useSignal`.** The base SDK's `writeEnabled` is browser-authoritative (only ever written client-side, `undefined` for the whole of a server render), so this composable does three things instead: under SSR it returns a detached `shallowRef(undefined)` and never subscribes (the signal is a process-wide singleton that would outlive the request); during the hydration pass it publishes `undefined` and adopts the live value on a **macrotask** (`setTimeout(0)`), latched by a module-level `pastHydration` flag keyed on the first *call*; after that, calls fall through to `useSignal`. This is the Vue analog of React's pinned `getServerSnapshot` and Svelte's deferred store. `nextTick()` is **not** a valid substitute — a microtask still drains inside the hydration pass, which is exactly the mismatch being prevented. The flag is keyed on first call, not module init, because an awaited Nuxt plugin can run many macrotasks between import and mount.
 
-4. **`<Translate>` / `<Phrase>`** — wrap the vanilla `Translate` / `Phrase` DOM classes. A template ref gets the host node; `onMounted` constructs the instance and `onBeforeUnmount` calls `destroy()`. `<Phrase>` recreates its instance only on `category` change; param changes flow through `setParams` via a deep watcher. The DOM walking, content-block registration, attribute harvesting, and re-translation on locale change all live in the underlying classes. The components mutate the rendered DOM in place — keep children static. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
+4. **`refToWriteGrant`** — the write-grant analog of `refToLocaleSource`, and the Vue mirror of Svelte's `adaptWriteGrant`. A ref becomes a provider *function*, never a snapshot; strings and provider functions pass through by identity. Unlike `refToLocaleSource` it deliberately does **not** subscribe or read eagerly — the grant is pulled per request, so there is nothing to push, and a lazy read also keeps the grant ref from being tracked by whatever effect is running at `init()`. `init` and `setWriteGrant` both apply it, so consumers never call it directly.
+
+5. **`useLocaleStore(initial)`** — creates one `Signal<string>` per `setup()` call (setup runs once per component instance, so no memoization dance is needed), subscribes with `useSignal`, and returns `{ locale, setLocale, store }`. Pass `store` to `init`; drive the locale with `setLocale`.
+
+6. **`<Translate>` / `<Phrase>`** — wrap the vanilla `Translate` / `Phrase` DOM classes. A template ref gets the host node; `onMounted` constructs the instance and `onBeforeUnmount` calls `destroy()`. `<Phrase>` recreates its instance only on `category` change; param changes flow through `setParams` via a deep watcher. The DOM walking, content-block registration, attribute harvesting, and re-translation on locale change all live in the underlying classes. The components mutate the rendered DOM in place — keep children static. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
 
 ## Public API
 
 ```typescript
 // Main entry point — wraps init to accept a Signal<string>, delegates everything else
-LangsysApp.init({ projectid, key, UserLocaleStore, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale? })
+LangsysApp.init({ projectid, key, UserLocaleStore, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale?, writeGrant? })
 // No apiUrl field — point at another server with LangsysAppAPI.setBaseUrl() BEFORE init().
 LangsysApp.t                     // current TFunction (snapshot — not reactive on its own; use useT())
 LangsysApp.getCountries() / getCurrencies() / getDialCodes() / getLocales*() / ...
 LangsysApp.detectPreferredLocale(acceptLanguageHeader?, supportedLocales?)
 LangsysApp.refresh()
+LangsysApp.setWriteGrant(grant)   // re-authorizes, then applies the new write_enabled; accepts a Ref too
 LangsysApp.translationsLoadingPromise
 
 // Composables (the reactive layer)
@@ -55,12 +61,15 @@ useT()                   -> Readonly<ShallowRef<TFunction>>   // updates on tran
 useCurrentLocale()       -> Readonly<ShallowRef<string>>      // loaded locale (lags UserLocaleStore until fetch settles)
 useTranslations()        -> Readonly<ShallowRef<iCategories>> // raw catalog
 useLocaleStore(initial?) -> { locale, setLocale, store }
+useWriteEnabled()        -> Readonly<ShallowRef<boolean | undefined>>  // TRI-STATE; undefined != false
 useSignal(signal)        -> Readonly<ShallowRef<T>>           // low-level Signal → ref bridge
 
 // Store factories + raw signals (advanced / direct subscription)
 createLocaleStore(initial?)   // Signal<string> — the writable analog
 refToLocaleSource(ref)        // adapt an existing Ref<string> (Pinia, useState) into a Signal<string>
-t, currentlyLoadedLocale, sTranslations  // raw Signals; prefer the composables in components
+refToWriteGrant(grant)        // Ref<string|null|undefined> -> provider function (never a snapshot)
+setWriteGrant(grant)          // standalone alias for LangsysApp.setWriteGrant (Vue-flavored, accepts a Ref)
+t, currentlyLoadedLocale, sTranslations, writeEnabled  // raw Signals; prefer the composables in components
 createSignal                  // re-exported generic Signal factory
 canonicalizeLocale(locale)    // re-exported BCP 47 normalizer ('en-us' → 'en-US')
 
@@ -73,10 +82,11 @@ canonicalizeLocale(locale)    // re-exported BCP 47 normalizer ('en-us' → 'en-
 LangsysAppAPI
 
 // Types — all sourced from langsys-js-typescript, re-exported for ergonomic imports
-iLangsysInitConfig (the Vue-flavored one — UserLocaleStore is Signal<string>)
+iLangsysInitConfig (the Vue-flavored one — UserLocaleStore is Signal<string>, writeGrant is WriteGrantSource)
 iLangsysResponse, iCategories, iTranslations, iContentBlock, iCountry, iCountryDialCode, iCountryList,
 iCurrency, iCurrencyList, iLanguageName, iLocaleData, iLocaleDefault, iLocaleFlat, iProject,
-TFunction, TranslationParams, ParamPrimitive, ExtractParamKeys, ParamsFor, TArgs, Signal
+TFunction, TranslationParams, ParamPrimitive, ExtractParamKeys, ParamsFor, TArgs, Signal, WriteGrant
+WriteGrantSource (the Vue-flavored one — WriteGrant | Ref<string | null | undefined>)
 ```
 
 > Note on the `t()` signature: it is **`t(phrase, category?, params?)`** — phrase first.
@@ -128,8 +138,13 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Type re-exports go through `index.ts`.** Consumers shouldn't have to reach into `langsys-js-typescript` for routine types.
 - **The composables' reactivity story** depends on the base SDK re-emitting a fresh `TFunction` closure on every translations/locale change *and* returning a stable reference between changes. If components don't update after a locale change, look at the `tSignal` subscriber wiring in `langsys-js-typescript`'s `Translations` class.
 - **Always `shallowRef`, never `ref`, for signal payloads.** A deep proxy over `TFunction` or the catalog breaks identity and wastes reactivity overhead.
+- **Never collapse `writeEnabled`'s tri-state.** `undefined` means "the server hasn't answered yet", not "read-only". Defaulting it to `false` tells a write-enabled session it can't write, which is unrecoverable without a reload, and upstream it converts "hold these misses" into "drop them". This applies to our own code as much as to consumers' — don't add a `?? false` anywhere in the read path.
+- **`useWriteEnabled`'s hydration latch must stay a macrotask.** `setTimeout(0)`, not `nextTick()` / `queueMicrotask` / `Promise.resolve()`. A microtask drains inside the same hydration pass, so it reintroduces the mismatch. `src/composables.test.ts` pins this with a test that fails on a microtask latch.
+- **Keep `refToWriteGrant` lazy and non-subscribing.** It must return a provider that reads on every call. Snapshotting the ref produces a grant that can never refresh — and since grants are short-lived, that passes every test that doesn't specifically check for it and then expires in production.
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads.
 
 ## Testing approach
 
-Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. The live reactive path is exercised by the `example/` playground.
+Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. The live reactive path is exercised by the `example/` playground.
+
+**Every new test must demonstrate its failing case before its passing one** — a check that cannot fail is not evidence. In practice that means either an inline positive control (adapt the same input with the naive/wrong implementation and assert it produces the bug) or a verified mutation of the implementation. The `refToWriteGrant` and `useWriteEnabled` suites do the former inline; both were additionally mutation-checked (naive `useSignal` passthrough, microtask latch, `undefined`→`false`, snapshotting adapter, eager-read adapter) and each mutation fails the suite.

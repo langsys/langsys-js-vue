@@ -1,6 +1,6 @@
-import { getCurrentScope, onScopeDispose, shallowRef, watch } from 'vue';
+import { getCurrentScope, isRef, onScopeDispose, shallowRef, watch } from 'vue';
 import type { Ref, ShallowRef } from 'vue';
-import { createSignal, type Signal } from 'langsys-js-typescript';
+import { createSignal, type Signal, type WriteGrant } from 'langsys-js-typescript';
 
 /**
  * Subscribe the current effect scope to a base-SDK `Signal<T>` and return its
@@ -78,4 +78,39 @@ export function refToLocaleSource(localeRef: Ref<string>): Signal<string> {
             return stop;
         },
     };
+}
+
+/**
+ * The Vue-flavored write grant. Everything the base SDK accepts — a token
+ * string, or (preferred) a provider function called fresh for each request —
+ * plus a Vue `Ref`, so refreshing the grant is `grantRef.value = next` rather
+ * than an imperative call.
+ */
+export type WriteGrantSource = WriteGrant | Ref<string | null | undefined>;
+
+/**
+ * Normalize the Vue grant option down to the base SDK's `WriteGrant` — the
+ * write-grant analog of `refToLocaleSource`, and the Vue mirror of the Svelte
+ * wrapper's `adaptWriteGrant`.
+ *
+ * A ref becomes a provider *function*, never a snapshot. The base SDK
+ * deliberately resolves the grant per request and caches it nowhere, so reading
+ * through on every call is what makes a later `grantRef.value = next` take
+ * effect on the very next request instead of the next `init()`. Snapshotting
+ * here would look like a working adapter while producing a grant that can never
+ * refresh — and since grants are short-lived, it would work in testing and
+ * expire in production.
+ *
+ * Unlike `refToLocaleSource` this deliberately does *not* subscribe. The grant
+ * is pulled when a request needs it, so there is nothing to push; reading
+ * lazily also keeps a grant ref from being tracked by whatever effect happened
+ * to be running at `init()` time.
+ *
+ * Strings and provider functions pass through by identity — a provider is
+ * already the shape the SDK wants, and re-wrapping it would only obscure it.
+ */
+export function refToWriteGrant(grant: WriteGrantSource | undefined): WriteGrant | undefined {
+    if (grant === undefined) return undefined;
+    if (isRef(grant)) return () => grant.value;
+    return grant;
 }
