@@ -39,10 +39,10 @@ export function useSignal<T>(signal: Signal<T>): Readonly<ShallowRef<T>> {
  * and switch locale with `store.set('fr-FR')`. The base SDK only ever reads and
  * subscribes to it — it never writes.
  *
- * Locale identifiers are canonicalized to BCP 47 by the base SDK (v0.3.0+), so
- * `'en-us'` still works on input — but `currentlyLoadedLocale` always emits the
- * canonical form (`'en-US'`), so prefer canonical casing to keep comparisons
- * against it straightforward.
+ * Locale identifiers are canonicalized by the base SDK, so `'en-US'` still works
+ * on input — but the canonical form is **lowercase** `xx-yy` (WIRE-3), and
+ * `currentlyLoadedLocale` always emits it that way (`'en-us'`). Compare against
+ * the lowercase form, or normalize your own values with `canonicalizeLocale()`.
  */
 export function createLocaleStore(initial = 'en-US'): Signal<string> {
     return createSignal<string>(initial);

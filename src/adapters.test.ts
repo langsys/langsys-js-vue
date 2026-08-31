@@ -34,7 +34,7 @@ describe('createLocaleStore', () => {
 
     it("passes values through verbatim — canonicalization is the base SDK's job", () => {
         // The store is a plain Signal; lowercase input is legal and reaches the
-        // SDK as-is, where v0.3.0+ canonicalizes it to BCP 47 ('en-us' → 'en-US').
+        // SDK as-is, where it is canonicalized to the lowercase `xx-yy` wire form.
         const store = createLocaleStore('en-us');
         expect(store.get()).toBe('en-us');
     });

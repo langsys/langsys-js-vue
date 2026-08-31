@@ -87,7 +87,7 @@ onMounted(() => {
 
 `UserLocaleStore` is a `Signal<string>` — switch it with `setLocale(...)` (from the same `useLocaleStore` call) or `store.set('fr-FR')`, and the SDK reacts. If you'd rather keep the locale store at module scope, `const localeStore = createLocaleStore('en-US')` works too. And if your app already owns the locale in a `ref` (Pinia state, Nuxt's `useState`), adapt it with `refToLocaleSource(localeRef)` instead.
 
-Locale identifiers are canonicalized to BCP 47 by the base SDK (v0.3.0+): lowercase input like `'en-us'` still works, but `useCurrentLocale()` and `detectPreferredLocale()` always return the canonical form (`'en-US'`) — compare against that, or normalize your own values with the re-exported `canonicalizeLocale()`.
+Locale identifiers are canonicalized by the base SDK: mixed-case input like `'en-US'` still works, but the canonical form is **lowercase `xx-yy`** — the form the API itself uses — so `useCurrentLocale()` and `detectPreferredLocale()` always return `'en-us'`. Compare against the lowercase form, or normalize your own values with the re-exported `canonicalizeLocale()`. Comparing a returned locale against a hard-coded `'en-US'` never matches.
 
 > **A malformed locale tag fails silently.** `canonicalizeLocale()` can't reject bad input — it falls back to best-effort casing and returns a string either way, so a typo like `'en-USA'` or `'english'` sails through, misses the catalog, and renders base language. That looks identical to a locale you simply haven't translated yet, which is why it survives testing. Since base SDK `0.6.5`, running with `debug: true` warns when a tag isn't valid BCP 47 (silent in production). If a locale renders untranslated and you can't see why, check the tag before checking the catalog.
 
@@ -358,7 +358,7 @@ Renders the host with `translate="no"`, which the base SDK's tokenizer and rende
 | `refToWriteGrant(ref)` | `(g?: WriteGrantSource) => WriteGrant \| undefined` | Adapt a Vue ref holding a write grant into the provider the SDK reads per request. Applied for you by `init` / `setWriteGrant`. |
 | `setWriteGrant(grant)` | `(g?: WriteGrantSource) => Promise<void>` | Supply or replace the grant after `init()`; re-authorizes and applies the new decision. Also available as `LangsysApp.setWriteGrant`. |
 | `t` / `currentlyLoadedLocale` / `sTranslations` / `writeEnabled` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables — `writeEnabled` especially, whose raw form has no hydration protection. |
-| `canonicalizeLocale(locale)` | `(s: string) => string` | Normalize a locale identifier to canonical BCP 47 (`'en-us'` → `'en-US'`) — the same normalization the SDK applies internally. |
+| `canonicalizeLocale(locale)` | `(s: string) => string` | Normalize a locale identifier to the canonical **lowercase** wire form (`'en-US'` → `'en-us'`) — the same normalization the SDK applies internally. |
 
 ## Server-Side Rendering (Nuxt)
 
@@ -387,7 +387,7 @@ const localeName                = await LangsysApp.getLocaleNameWithLookup('es-E
 ```typescript
 // Browser: navigator.languages → fallback to navigator.language
 const locale = LangsysApp.detectPreferredLocale();
-// Returns 'en-US', 'fr', etc., or false only when nothing can be detected at all
+// Returns 'en-us', 'fr', etc. (lowercase), or false only when nothing can be detected at all
 
 // SSR (server route / middleware): parses Accept-Language
 const locale = LangsysApp.detectPreferredLocale(event.node.req.headers['accept-language']);
@@ -397,21 +397,26 @@ const supportedLocales = (await LangsysApp.getLocalesFlat()).map((l) => l.code);
 const locale = LangsysApp.detectPreferredLocale(acceptLanguage, supportedLocales);
 ```
 
-The matcher tries exact match first (e.g. `en-US`), then language-only (`en` matches `en-GB`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Results are always canonical BCP 47.
+The matcher tries exact match first (e.g. `en-us`), then language-only (`en` matches `en-gb`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Matching is casing-insensitive on input, and results are always returned in the canonical lowercase form.
 
 **On no match, it does *not* return `false`.** `false` is returned in exactly one case: no user preference could be detected at all (empty `Accept-Language`, no `navigator.languages`). When you pass `supportedLocales` and none of the user's preferences match, it falls back to **the user's own top preference**, canonicalized — an unsupported locale. So this is a trap:
 
 ```typescript
 // WRONG — the || branch only fires when nothing was detected, never on a no-match,
 // so an unsupported locale propagates silently.
-const locale = LangsysApp.detectPreferredLocale(header, supported) || 'en-US';
+const locale = LangsysApp.detectPreferredLocale(header, supported) || 'en-us';
 ```
 
 Guard the result against your own list instead:
 
 ```typescript
-const detected = LangsysApp.detectPreferredLocale(header, supportedLocales);
-const locale = detected && supportedLocales.includes(detected) ? detected : 'en-US';
+import { canonicalizeLocale } from 'langsys-js-vue';
+
+// Canonicalize BOTH sides. `detected` comes back lowercase, so testing it against a
+// list holding `'en-US'` never matches and every user silently gets the fallback.
+const supported = supportedLocales.map(canonicalizeLocale);
+const detected = LangsysApp.detectPreferredLocale(header, supported);
+const locale = detected && supported.includes(detected) ? detected : 'en-us';
 ```
 
 Without a `supportedLocales` list, it returns the user's first preference, or `false` when none can be detected.
