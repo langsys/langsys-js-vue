@@ -11,9 +11,9 @@
  *   - `createLocaleStore` — make the user-locale store (Vue analog of Svelte's
  *     `writable`); `refToLocaleSource` — adapt an existing `Ref<string>`.
  *   - `Translate` — Vue component wrapping the vanilla DOM `Translate` class.
- *   - Raw signals `t` / `currentlyLoadedLocale` / `sTranslations` /
- *     `writeEnabled` — re-exported for advanced/direct subscription outside
- *     Vue's reactivity.
+ *   - Raw signals `t` / `currentlyLoadedLocale` / `sTranslations` —
+ *     re-exported for advanced/direct subscription outside Vue's reactivity.
+ *     `writeEnabled` is deliberately NOT among them; see below.
  *   - Write gating — `useWriteEnabled()` (tri-state: `undefined` = not yet
  *     known, and never to be read as `false`), the `writeGrant` init option,
  *     and `setWriteGrant` for the post-login case.
@@ -53,12 +53,26 @@ import { refToWriteGrant, type WriteGrantSource } from './adapters.js';
 // components, prefer the composables (`useT`, `useCurrentLocale`, …).
 export { currentlyLoadedLocale, createSignal, sTranslations, tSignal as t } from 'langsys-js-typescript';
 
-// Server-computed write capability, as a raw signal. Tri-state — `undefined`
-// means "not yet known", NOT read-only. In components prefer
-// `useWriteEnabled()`: this signal is browser-authoritative, so reading it
-// directly during SSR or hydration is exactly the mismatch that composable
-// exists to prevent.
-export { writeEnabled } from 'langsys-js-typescript';
+// ---------------------------------------------------------------------------
+// `writeEnabled` is DELIBERATELY NOT RE-EXPORTED. Do not add it back.
+//
+// The core's signal is browser-authoritative: it is only ever written
+// client-side and is `undefined` for the whole of a server render. Re-exporting
+// it hands consumers a value that is correct to read in exactly one of the
+// three contexts they will read it in — reading it during SSR or the hydration
+// pass is precisely the mismatch `useWriteEnabled()` exists to prevent, and the
+// raw signal carries none of that protection.
+//
+// Fleet ruling (Reviewer, topic `838-audit-vue`), applied as one decision across
+// this binding and langsys-js-react: every binding withholds the raw signal and
+// surfaces the guarded composable instead. Svelte and Angular already did.
+//
+// `useWriteEnabled()` is the supported access path. A consumer who genuinely
+// needs the unguarded signal can still import it from `langsys-js-typescript`
+// directly — that escape hatch is why withholding it here costs nothing.
+//
+// The absence is pinned by `src/write-enabled-absence.test.ts`.
+// ---------------------------------------------------------------------------
 
 // Locale canonicalization (BCP 47) — the SDK canonicalizes all locale input
 // (v0.3.0+); re-exported so consumers can normalize their own values the same

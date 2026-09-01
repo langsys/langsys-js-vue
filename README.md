@@ -144,7 +144,7 @@ const writeEnabled = useWriteEnabled();
 
 The composable is SSR-safe. During server rendering it reports `undefined` without subscribing (the underlying signal is a process-wide singleton, and it is only ever written client-side); during hydration it publishes `undefined` — matching what the server rendered — and adopts the real value on the next macrotask, so a Nuxt app whose authorization resolves in an awaited plugin doesn't hydrate into a mismatch. Components mounted later, after a client-side navigation, read through immediately with no flash.
 
-`writeEnabled` is also exported as a raw signal for direct subscription outside Vue's reactivity. It has none of the protections above — in components, use the composable.
+`useWriteEnabled()` is the only access path this package provides. The core's raw `writeEnabled` signal is **deliberately not re-exported**: it has none of the SSR or hydration protection described above, so reading it directly reintroduces exactly the mismatch the composable exists to prevent. If you genuinely need the unguarded signal, import it from `langsys-js-typescript` directly and take on that timing yourself.
 
 ### Write grants (login-walled apps)
 
@@ -357,7 +357,7 @@ Renders the host with `translate="no"`, which the base SDK's tokenizer and rende
 | `refToLocaleSource(ref)` | `(r: Ref<string>) => Signal<string>` | Adapt an existing Vue ref (Pinia, `useState`) into the SDK's locale-store contract. |
 | `refToWriteGrant(ref)` | `(g?: WriteGrantSource) => WriteGrant \| undefined` | Adapt a Vue ref holding a write grant into the provider the SDK reads per request. Applied for you by `init` / `setWriteGrant`. |
 | `setWriteGrant(grant)` | `(g?: WriteGrantSource) => Promise<void>` | Supply or replace the grant after `init()`; re-authorizes and applies the new decision. Also available as `LangsysApp.setWriteGrant`. |
-| `t` / `currentlyLoadedLocale` / `sTranslations` / `writeEnabled` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables — `writeEnabled` especially, whose raw form has no hydration protection. |
+| `t` / `currentlyLoadedLocale` / `sTranslations` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables. `writeEnabled` is **not** among them — see [Write gating](#write-gating). |
 | `canonicalizeLocale(locale)` | `(s: string) => string` | Normalize a locale identifier to the canonical **lowercase** wire form (`'en-US'` → `'en-us'`) — the same normalization the SDK applies internally. |
 
 ## Server-Side Rendering (Nuxt)

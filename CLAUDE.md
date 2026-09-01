@@ -69,7 +69,8 @@ createLocaleStore(initial?)   // Signal<string> — the writable analog
 refToLocaleSource(ref)        // adapt an existing Ref<string> (Pinia, useState) into a Signal<string>
 refToWriteGrant(grant)        // Ref<string|null|undefined> -> provider function (never a snapshot)
 setWriteGrant(grant)          // standalone alias for LangsysApp.setWriteGrant (Vue-flavored, accepts a Ref)
-t, currentlyLoadedLocale, sTranslations, writeEnabled  // raw Signals; prefer the composables in components
+t, currentlyLoadedLocale, sTranslations  // raw Signals; prefer the composables in components
+// writeEnabled is deliberately NOT re-exported — use useWriteEnabled(); see index.ts and write-enabled-absence.test.ts
 createSignal                  // re-exported generic Signal factory
 canonicalizeLocale(locale)    // re-exported locale normalizer; canonical form is LOWERCASE 'en-us' (WIRE-3)
 
@@ -144,6 +145,7 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **The composables' reactivity story** depends on the base SDK re-emitting a fresh `TFunction` closure on every translations/locale change *and* returning a stable reference between changes. If components don't update after a locale change, look at the `tSignal` subscriber wiring in `langsys-js-typescript`'s `Translations` class.
 - **Always `shallowRef`, never `ref`, for signal payloads.** A deep proxy over `TFunction` or the catalog breaks identity and wastes reactivity overhead.
 - **The canonical locale form is LOWERCASE `xx-yy` (WIRE-3), not `'en-US'`.** `canonicalizeLocale()`, `useCurrentLocale()` and `detectPreferredLocale()` all emit lowercase. This changed in the base SDK's 838 line (`74302a6`, `locale.ts:46`) and silently invalidated the previous docs, which told consumers to compare against `'en-US'` — a comparison that then never matches, rendering base language, which is indistinguishable from an untranslated locale. Do not reintroduce an uppercase canonical claim anywhere in docs, doc comments, or test comments.
+- **Never re-export the raw `writeEnabled` signal.** It is withheld on purpose (fleet ruling, applied to this binding and react together): the raw signal has no SSR or hydration protection, so handing it to consumers makes the mismatch `useWriteEnabled()` prevents reachable again. `src/write-enabled-absence.test.ts` fails if it comes back. Consumers who need the unguarded signal import it from `langsys-js-typescript` directly.
 - **Never collapse `writeEnabled`'s tri-state.** `undefined` means "the server hasn't answered yet", not "read-only". Defaulting it to `false` tells a write-enabled session it can't write, which is unrecoverable without a reload, and upstream it converts "hold these misses" into "drop them". This applies to our own code as much as to consumers' — don't add a `?? false` anywhere in the read path.
 - **`useWriteEnabled`'s hydration latch must stay a macrotask.** `setTimeout(0)`, not `nextTick()` / `queueMicrotask` / `Promise.resolve()`. A microtask drains inside the same hydration pass, so it reintroduces the mismatch. `src/composables.test.ts` pins this with a test that fails on a microtask latch.
 - **Keep `refToWriteGrant` lazy and non-subscribing.** It must return a provider that reads on every call. Snapshotting the ref produces a grant that can never refresh — and since grants are short-lived, that passes every test that doesn't specifically check for it and then expires in production.

@@ -7,8 +7,8 @@ Conformance of this **binding** against the SDK Behaviour Spec.
 | Spec version                | **7** (`specVersion: 7`)                                                                                                                        |
 | Spec text read              | `docs/sdk-spec.mdx` blob `06ae105a0a1f7b5245ec32929f0b3885c63f0336`, from `langsys2` `origin/main` @ `7bee50d63e7889696b037aec313578d981c7354a` |
 | Read at                     | 2026-08-31T14:59:54-06:00                                                                                                                       |
-| Repo state                  | branch `feature/838_write_key_gating_reland`, 838 surface landed + this audit + fix lane (gaps 1 and 4 closed)                                  |
-| Suite                       | **47 tests / 6 files**, all passing (includes the 5-test upstream precondition)                                                                 |
+| Repo state                  | branch `feature/838_write_key_gating_reland`, 838 surface landed + this audit + fix lane (gaps 1, 4 and 5 closed)                               |
+| Suite                       | **51 tests / 7 files**, all passing (includes the 5-test upstream precondition)                                                                 |
 | Evidence grade of the suite | **`mock`** — node env, core doubled where it matters, zero network                                                                              |
 | Core consumed               | `langsys-js-typescript` working copy @ `82678b6`, local `0.6.5` via a gitignored `node_modules` symlink — **not** the published `0.6.5`         |
 | Profiles                    | `browser` · `binding` · `all`                                                                                                                   |
@@ -76,7 +76,7 @@ grows the construct named in the row. Both carry their expiry condition, because
 | Rule                                                              | Grade         | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **BIND-1** — adapt shape/timing, never meaning                    | `provisional` | Adaptation is confined to Vue's reactivity model: SDK `Signal` → `shallowRef` (`useSignal`), a `flush: 'sync'` watcher for `refToLocaleSource`, three lifecycle-bound components, and the hydration timing guard in `useWriteEnabled`. The guard adapts **when** the value may be read, never what it means — the value is the core's throughout, and the tri-state is passed on undefaulted. Mutation evidence: §Mutation evidence rows 1–3.                                                                                                                                                                                                                          |
-| **BIND-2** — never branch on server-computed capability           | `provisional` | Branches on nothing. `writeEnabled` is surfaced unchanged; no code path in `src/` reads it to decide anything. Probe for a capability branch (`if.*writeEnabled\|writeEnabled.*?\s*\?`): **0 in this binding**, positive control **24** in the core. `key_type` appears nowhere in this binding at all.                                                                                                                                                                                                                                                                                                                                                                |
+| **BIND-2** — never branch on server-computed capability           | `provisional` | Branches on nothing. `writeEnabled` is surfaced only through `useWriteEnabled()`, which passes the core's value on undefaulted (the raw signal is withheld — see the fix-lane note under Ranked gaps); no code path in `src/` reads it to decide anything. Probe for a capability branch (`if.*writeEnabled\|writeEnabled.*?\s*\?`): **0 in this binding**, positive control **24** in the core. `key_type` appears nowhere in this binding at all.                                                                                                                                                                                                                    |
 | **BIND-3** — owns no network behaviour                            | `delegated`   | Code-only probe (§3 method) for `fetch\|XMLHttpRequest\|setInterval\|retry\|backoff\|headers`: **0 in this binding, 13 in the core**. _(Raw grep returns 1 — a JSDoc sentence; the stripped filter is why the count is 0.)_ This binding issues no request and sets no header.                                                                                                                                                                                                                                                                                                                                                                                         |
 | **BIND-4** — introduces no configuration the core does not define | `provisional` | `iLangsysInitConfig` adds **zero** keys beyond the core's. It only _widens_ two existing ones: `UserLocaleStore` to `Signal<string>` and `writeGrant` to `WriteGrantSource` (`WriteGrant \| Ref<…>`). Both are strict supersets — every vanilla value is still accepted — and both are normalized back to the core's type before delegation. There is deliberately **no `apiUrl` key**; WIRE-5 is met through the core's `LangsysAppAPI.setBaseUrl()`, documented in the README.                                                                                                                                                                                       |
 | **BIND-5** — does not cache lookup results                        | `provisional` | **Zero memoization constructs in `src/`** — probe for `computed(\|memo\|cache\|useMemo\|WeakMap\|new Map(` returns 0. `useT()` returns a `shallowRef<TFunction>` and templates call `t.value(…)` on every render, so a re-render _is_ a re-entry. Measured under `vue-router`, both plain and `<KeepAlive>`, by `route-reentry.test.ts` (6 tests): see §Route re-entry. Mutation evidence: a module-level memo in front of `t()` — Angular's shipped shape — fails **3 of 6**; a per-instance memo fails the discriminating keep-alive case. One measured limitation, pinned by a test rather than hidden: persistent layout components do not re-enter on navigation. |
@@ -269,7 +269,7 @@ the correct implementation — which is why the assertion, not the shape, is wha
 
 Ranked by what the gap costs, not by rule order.
 
-**Closed in the follow-up fix lane** (were gaps 1 and 4):
+**Closed in the follow-up fix lane** (were gaps 1, 4 and 5):
 
 - **Upstream-precondition test — `src/upstream-precondition.test.ts`.** Asserts the resolved core
   carries `writeEnabled` (object), `setWriteGrant` (function) and `autoDiscovery` (object), with
@@ -280,6 +280,17 @@ Ranked by what the gap costs, not by rule order.
   rather than a broken load. It then **caught the real thing within the same session**:
   `npm install --save-dev` for the tooling below silently replaced the symlink again, and the
   suite went red instead of green.
+- **Raw `writeEnabled` export removed — `src/write-enabled-absence.test.ts`.** Ruled by the fleet
+  as one decision covering this binding and `langsys-js-react` (React's operator; Svelte and
+  Angular already withheld it). The export was unreleased — **zero** occurrences in the published
+  `0.2.1` type declarations, against a positive control of 8 for `useT` — so it broke no consumer.
+  The absence is pinned with two positive controls, because an absence assertion passes just as
+  happily against a failed import: (1) the core still exports `writeEnabled`, so the absence is
+  this package's choice rather than an upstream removal; (2) this package loaded and exposes
+  `useWriteEnabled`, so the absence is a missing export rather than an empty module. A fourth test
+  asserts the other raw signals remain, making this a targeted withholding rather than an empty
+  barrel. Red-first: re-adding the export fails it while both controls stay green.
+
 - **Rendered-output assertions — `src/rendered.test.ts`, `src/route-reentry.test.ts`.** The
   tri-state is now asserted through `textContent` in a real DOM, including a three-way template
   branch where `undefined` renders its own state rather than falling into the read-only branch.
@@ -295,13 +306,6 @@ Ranked by what the gap costs, not by rule order.
    add nothing. Cost: **surface drift** — every core signature change needs a matching edit here,
    and a missed one silently narrows the binding. Angular removed 14 of the same shape. Removing
    public surface is an operator decision, not an audit's.
-3. **Raw `writeEnabled` signal is exported.** Svelte exports its own hydration-safe store under
-   that name and Angular withholds the raw signal entirely — but **React re-exports the raw core
-   signal exactly as this binding does** (`react/src/index.ts:47`), so this is a two-of-five
-   split, not a Vue outlier. The export carries a doc comment warning it has no hydration
-   protection and directing consumers to `useWriteEnabled()`. It is also **unreleased** — it
-   arrived with the 838 branch — so withdrawing it would break nobody. `open`: worth one fleet
-   ruling covering Vue and React together rather than two local answers.
 
 ## Reproducing this file's evidence
 
