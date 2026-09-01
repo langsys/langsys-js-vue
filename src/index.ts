@@ -139,113 +139,88 @@ export interface iLangsysInitConfig extends Omit<iVanillaInitConfig, 'UserLocale
 }
 
 /**
- * Vue SDK entry point. Delegates everything to the underlying
- * `langsys-js-typescript` singleton. Because the Vue locale store is already a
- * `Signal` (unlike Svelte's `Writable`, which needs adapting), `init` is a
- * straight passthrough — the Vue-native concerns live in the composables and
- * the `<Translate>` component, not here.
+ * Vue-flavored `LangsysApp` type: the core singleton's surface, with the two
+ * members this binding adapts re-typed to accept Vue shapes.
  */
-class LangsysAppVue {
-    /**
-     * Initialize Langsys. Pass a `Signal<string>` (from `createLocaleStore`) as
-     * `UserLocaleStore`.
-     *
-     * `writeGrant` is normalized on the way through, so a Vue ref becomes a
-     * provider the SDK reads per request — see `refToWriteGrant`. Everything
-     * else is a straight passthrough.
-     */
-    public init(config: iLangsysInitConfig): Promise<iLangsysResponse> {
-        return _LangsysApp.init({
-            ...config,
-            writeGrant: refToWriteGrant(config.writeGrant),
-        });
-    }
-
-    public get Translations() {
-        return _LangsysApp.Translations;
-    }
-
-    public get translationsLoadingPromise() {
-        return _LangsysApp.translationsLoadingPromise;
-    }
-
-    /** Current translation function. Reads fresh state on every call (not reactive on its own — use `useT()` in components). */
-    public get t(): TFunction {
-        return _LangsysApp.t;
-    }
-
-    public get debug() {
-        return _LangsysApp.debug;
-    }
-
-    public refresh() {
-        return _LangsysApp.refresh();
-    }
-
+export type LangsysAppVue = Omit<typeof _LangsysApp, 'init' | 'setWriteGrant'> & {
+    /** Initialize Langsys. Pass a `Signal<string>` (from `createLocaleStore`) as `UserLocaleStore`. */
+    init(config: iLangsysInitConfig): Promise<iLangsysResponse>;
     /**
      * Supply or replace the write grant after `init()` — the login-walled case,
      * where the token only exists once the user has authenticated.
      *
-     * This re-authorizes so the server re-evaluates the session with the new
-     * `X-Write-Grant` header, then applies the returned `write_enabled`. Await
-     * it if you need to know the session flipped; misses occurring after it
-     * lands register directly, while earlier ones were already reported by the
-     * discovery lane.
-     *
-     * Prefer the function form of `writeGrant` at `init()` where you can — or a
-     * ref, which becomes one. The grant is short-lived, and a provider is
-     * called fresh for each request rather than expiring mid-session.
+     * Re-authorizes so the server re-evaluates the session with the new
+     * `X-Write-Grant` header, then applies the returned `write_enabled` (GRANT-3).
+     * Await it if you need to know the session flipped.
      */
-    public setWriteGrant(grant: WriteGrantSource | undefined): Promise<void> {
+    setWriteGrant(grant: WriteGrantSource | undefined): Promise<void>;
+};
+
+/**
+ * The two members this binding adapts, and nothing else. Both exist for a
+ * stated reason: `init` widens `UserLocaleStore` and `writeGrant` to Vue
+ * shapes, and `setWriteGrant` accepts a Vue `Ref`. Neither changes meaning —
+ * the decisions stay the core's (BIND-1, BIND-2).
+ */
+const overrides = {
+    init(config: iLangsysInitConfig): Promise<iLangsysResponse> {
+        return _LangsysApp.init({
+            ...config,
+            writeGrant: refToWriteGrant(config.writeGrant),
+        });
+    },
+    setWriteGrant(grant: WriteGrantSource | undefined): Promise<void> {
         return _LangsysApp.setWriteGrant(refToWriteGrant(grant));
-    }
+    },
+} as const;
 
-    public getCountries(inLocale?: string) {
-        return _LangsysApp.getCountries(inLocale);
-    }
-    public getCountryName(forCountryCode: string, inLocale?: string) {
-        return _LangsysApp.getCountryName(forCountryCode, inLocale);
-    }
-    public getCurrencies(inLocale?: string) {
-        return _LangsysApp.getCurrencies(inLocale);
-    }
-    public getCurrencyName(forCurrencyCode: string, inLocale?: string) {
-        return _LangsysApp.getCurrencyName(forCurrencyCode, inLocale);
-    }
-    public getDialCodes(inLocale?: string) {
-        return _LangsysApp.getDialCodes(inLocale);
-    }
-
-    public getLocales(inLocale?: string) {
-        return _LangsysApp.getLocales(inLocale);
-    }
-    public getLocalesFlat(inLocale?: string) {
-        return _LangsysApp.getLocalesFlat(inLocale);
-    }
-    public getLocalesData(inLocale?: string, forceRefresh?: boolean) {
-        return _LangsysApp.getLocalesData(inLocale, forceRefresh);
-    }
-    public getLocalesFormat(format: '' | 'flat' | 'data' = '', inLocale?: string) {
-        return _LangsysApp.getLocalesFormat(format, inLocale);
-    }
-    public getLocaleName(forLocale: string, shortName?: boolean, inLocale?: string) {
-        return _LangsysApp.getLocaleName(forLocale, shortName, inLocale);
-    }
-    public getLocaleNameWithLookup(forLocale: string, shortName?: boolean, inLocale?: string) {
-        return _LangsysApp.getLocaleNameWithLookup(forLocale, shortName, inLocale);
-    }
-
-    /** @deprecated use `getLocaleNameWithLookup` or `getLocaleName` */
-    public getLanguageName(forLocale: string, shortName?: boolean, inLocale?: string) {
-        return _LangsysApp.getLanguageName(forLocale, shortName, inLocale);
-    }
-
-    public detectPreferredLocale(acceptLanguageHeader?: string | null, supportedLocales?: string[]) {
-        return _LangsysApp.detectPreferredLocale(acceptLanguageHeader, supportedLocales);
-    }
-}
-
-export const LangsysApp = new LangsysAppVue();
+/**
+ * Vue SDK entry point — the base SDK's singleton, forwarded **by reference**,
+ * with the two narrow overrides above.
+ *
+ * ## Why a proxy and not a wrapper class
+ *
+ * This was a hand-written class enumerating one delegating method per core
+ * method. That shape has a failure mode with no symptom: **every method the
+ * core adds after the class is written silently disappears from this binding**,
+ * with a green typecheck and a green suite, because nothing references what is
+ * missing.
+ *
+ * It had already happened five times when the 838 audit found it —
+ * `applyAuthorization`, `getUserLanguagePreferences`, `parseAcceptLanguageHeader`,
+ * `findBestLocaleMatch` and `resolveLocale` were all on the core and simply not
+ * on the list. Adding them by hand would have fixed the symptom and left the
+ * mechanism running for the next core release to trip over.
+ *
+ * Forwarding by reference is what BIND-6 actually asks for — "re-export by
+ * reference everything that does not need adapting" — and it makes this binding
+ * excludable from an investigation in one sentence: everything but `init` and
+ * `setWriteGrant` *is* the core, not a copy of it. `src/surface.test.ts` guards
+ * the structure rather than any method name, so a future core addition cannot
+ * go missing quietly again.
+ *
+ * Forwarded members are returned **unbound**, so `LangsysApp.foo` and the core's
+ * `foo` are the same function object. Calling through the proxy sets `this` to
+ * the proxy, whose every read forwards to the core singleton, so the method sees
+ * the core's state either way. Binding instead would make a destructured method
+ * keep working here while the identical destructure off the core singleton
+ * breaks — a behaviour difference, which is exactly what BIND-1 forbids a
+ * binding from introducing.
+ *
+ * Safe because the core class uses no `#private` fields: those cannot be read
+ * through a proxy receiver and would force binding, and with it that divergence.
+ * `src/surface.test.ts` pins that assumption both structurally and by calling
+ * through the proxy, so it stops being true loudly rather than silently.
+ */
+export const LangsysApp: LangsysAppVue = new Proxy(_LangsysApp, {
+    get(target, prop) {
+        if (Object.prototype.hasOwnProperty.call(overrides, prop)) {
+            return overrides[prop as keyof typeof overrides];
+        }
+        // `target` as the receiver, so getters read the core's own state.
+        return Reflect.get(target, prop, target);
+    },
+}) as unknown as LangsysAppVue;
 
 /**
  * Standalone alias for `LangsysApp.setWriteGrant` — for module-scope code that

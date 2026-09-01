@@ -22,6 +22,13 @@
 
 ### Changed
 
+- **`LangsysApp` is now a `Proxy` over the base SDK singleton rather than a hand-written wrapper class.** It forwards every core member **by reference** and overrides exactly two — `init` and `setWriteGrant`, the only two that adapt Vue shapes. Non-breaking: `LangsysApp.getCountries()` and every other call keep working, and now resolve to the core's own function rather than a copy of it.
+
+    This fixes a defect, not just a smell. The enumerating class silently dropped every method the core added after it was written, with a green typecheck and a green suite because nothing referenced what was missing — and it had **already lost five**: `applyAuthorization`, `getUserLanguagePreferences`, `parseAcceptLanguageHeader`, `findBestLocaleMatch` and `resolveLocale`. All five are reachable again. Adding them by hand would have fixed the symptom and left the mechanism running, so the fix is structural and `src/surface.test.ts` guards the structure rather than any method name.
+
+    Forwarded members are returned unbound, so `LangsysApp.foo` and the core's `foo` are the same function object. Binding them would make a destructured method behave differently here than off the core singleton — a divergence BIND-1 forbids. This is safe only while the core uses no `#private` fields; that assumption is pinned by a test, both structurally and by calling through the proxy receiver.
+
+
 - **`iLangsysInitConfig.writeGrant` is widened to `WriteGrantSource`** (`WriteGrant | Ref<string | null | undefined>`). Purely additive — every value the vanilla config accepted is still accepted, and `init` normalizes on the way through.
 - **README: the API-key permissions section no longer says the SDK detects the key type itself.** It doesn't, and can't: the server computes `write_enabled` per session and returns it. The old wording implied a client-side determination that a reader could reasonably have branched on.
 
