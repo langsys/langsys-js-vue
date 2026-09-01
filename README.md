@@ -292,7 +292,7 @@ Renders the host with `translate="no"`, which the base SDK's tokenizer and rende
 | `useSignal(signal)` | `<T>(s: Signal<T>) => Readonly<ShallowRef<T>>` | Low-level: subscribe the current scope to any base-SDK signal. |
 | `createLocaleStore(initial?)` | `(s?: string) => Signal<string>` | Make a user-locale store outside components (module scope). |
 | `refToLocaleSource(ref)` | `(r: Ref<string>) => Signal<string>` | Adapt an existing Vue ref (Pinia, `useState`) into the SDK's locale-store contract. |
-| `t` / `currentlyLoadedLocale` / `sTranslations` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables. |
+| `t` / `currentlyLoadedLocale` / `sTranslations` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables. **`t` is a `Signal<TFunction>`, not a callable** — it is the base SDK's `tSignal` re-exported under the name `t`, so call it as `t.get()('Phrase', 'Cat', params?)`. A bare `t('Phrase')` throws `t is not a function`. |
 | `canonicalizeLocale(locale)` | `(s: string) => string` | Normalize a locale identifier to canonical BCP 47 (`'en-us'` → `'en-US'`) — the same normalization the SDK applies internally. |
 
 ## Server-Side Rendering (Nuxt)
