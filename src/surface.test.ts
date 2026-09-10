@@ -193,7 +193,7 @@ describe('BIND-6 — the binding forwards the core surface by reference', () => 
      * Core-private members are forwarded because the proxy forwards *uniformly* —
      * it does not enumerate, so it cannot filter. That is a property of the
      * mechanism, not an API promise: nothing here names them, and the exported
-     * type excludes them (see `surface-types.test-d.ts`). If the core renames or
+     * type excludes them (see `surface-types.test.ts`). If the core renames or
      * removes one, this assertion follows along instead of reddening.
      */
     it('forwards core-private members uniformly — a mechanism property, NOT API', () => {
@@ -209,12 +209,14 @@ describe('BIND-6 — the binding forwards the core surface by reference', () => 
 /**
  * The proxy's one structural hazard, pinned.
  *
- * Forwarded members are returned **unbound**, so calling `LangsysApp.foo()` sets
- * `this` to the proxy rather than to the core singleton. That is safe only while
- * the core class uses no `#private` fields: those are keyed on the actual
- * instance and cannot be read through a proxy receiver, so a single `#field`
- * added upstream would turn every forwarded call that touches it into a
- * `TypeError` at runtime.
+ * Forwarded methods are **bound to the core instance**, so `this` inside a
+ * forwarded call is the core whatever the call site looks like. That already
+ * settles the receiver question — but the `#private` invariant is still worth
+ * pinning, because the values an accessor computes are deliberately NOT bound
+ * (`get t()` returns a `TFunction` whose identity the composables depend on),
+ * and those are still read through the proxy receiver. A `#field` added
+ * upstream and touched from an accessor would turn into a `TypeError` at
+ * runtime, so this stops being true loudly rather than silently.
  */
 describe('proxy precondition — the core uses no #private fields', () => {
     it('structural: no #private field declarations in the resolved core artifact', () => {
@@ -224,9 +226,9 @@ describe('proxy precondition — the core uses no #private fields', () => {
         const privateFields = source.match(/(^|[\s;{}])#[A-Za-z_][A-Za-z0-9_]*\s*[=;(]/g) ?? [];
         expect(
             privateFields,
-            'The core has grown #private fields. Forwarded members are returned unbound, so ' +
-                '`this` is the proxy and those fields are unreachable — read the note above ' +
-                'this test before changing the proxy.'
+            'The core has grown #private fields. Accessor-computed values are read through ' +
+                'the proxy receiver rather than bound, so such a field is unreachable from one — ' +
+                'read the note above this test before changing the proxy.'
         ).toEqual([]);
     });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LangsysApp as coreLangsysApp } from 'langsys-js-typescript';
+import { ref } from 'vue';
 import { LangsysApp } from './index.js';
 
 /**
@@ -58,19 +59,27 @@ describe('destructured members stay callable — the 0.2.1 shape', () => {
     });
 
     it('a detached async member reaches the core rather than throwing on `this`', async () => {
-        const { getCountries } = LangsysApp;
+        const capture = async (fn: () => unknown): Promise<string> => {
+            try {
+                await fn();
+                return '';
+            } catch (e) {
+                return String(e);
+            }
+        };
 
-        // The network call may fail offline — that is fine and not what this
-        // asserts. What must NOT happen is a synchronous TypeError about `this`,
-        // which is how the unbound forward failed.
-        await expect(Promise.resolve().then(() => getCountries())).resolves.not.toThrow;
-        let thisError: unknown;
-        try {
-            await getCountries();
-        } catch (e) {
-            thisError = e;
-        }
-        expect(String(thisError ?? '')).not.toMatch(/Cannot read properties of undefined/);
+        // Positive control FIRST: the core's own function, detached, must fail in
+        // exactly the way this test is looking for. Without it, the assertion
+        // below would pass just as happily against a matcher that never fires.
+        const rawDetached = coreLangsysApp.getCountries;
+        expect(await capture(() => rawDetached()), 'the control did not reproduce the `this` failure').toMatch(
+            /Cannot read properties of undefined/
+        );
+
+        // The real assertion: the same shape through this binding does not.
+        // A network failure offline is fine and is not what this asserts.
+        const { getCountries } = LangsysApp;
+        expect(await capture(() => getCountries())).not.toMatch(/Cannot read properties of undefined/);
     });
 
     it('detaching an adapted member keeps the adaptation', async () => {
@@ -80,7 +89,33 @@ describe('destructured members stay callable — the 0.2.1 shape', () => {
         // destructure.
         const { setWriteGrant } = LangsysApp;
         expect(typeof setWriteGrant).toBe('function');
-        expect(setWriteGrant).not.toBe(coreLangsysApp.setWriteGrant);
+
+        // `not.toBe(core.setWriteGrant)` would NOT prove this: a bound forward of
+        // the core's own method is also `!==` it. The override keeps its own
+        // name, while a forward would be renamed `bound setWriteGrant` — so the
+        // name is what actually separates the two.
+        expect((setWriteGrant as { name: string }).name).toBe('setWriteGrant');
+
+        // And the behaviour that name is standing in for: a Vue Ref must reach
+        // the core as a PROVIDER FUNCTION reading the live value, never as the
+        // Ref object itself.
+        const proto = Object.getPrototypeOf(coreLangsysApp) as Record<string, unknown>;
+        const original = proto.setWriteGrant as (...a: unknown[]) => unknown;
+        let received: unknown;
+        proto.setWriteGrant = function (this: unknown, grant: unknown) {
+            received = grant;
+            return Promise.resolve();
+        };
+        try {
+            const grantRef = ref<string | null>('first');
+            await setWriteGrant(grantRef);
+            expect(typeof received, 'a Ref must be adapted, not passed through').toBe('function');
+            expect((received as () => unknown)()).toBe('first');
+            grantRef.value = 'rotated';
+            expect((received as () => unknown)(), 'the provider must read live, not snapshot').toBe('rotated');
+        } finally {
+            proto.setWriteGrant = original;
+        }
     });
 
     it('a member read twice is stable, so a detached copy is not a moving target', () => {

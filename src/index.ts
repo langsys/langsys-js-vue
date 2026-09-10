@@ -240,13 +240,36 @@ const overrides = {
  */
 const boundMembers = new Map<PropertyKey, { source: unknown; bound: unknown }>();
 
-/** True when `prop` is a data-property function somewhere on the prototype chain — a method, not an accessor. */
-function isPrototypeMethod(target: object, prop: PropertyKey): boolean {
-    for (let o: object | null = target; o; o = Object.getPrototypeOf(o) as object | null) {
+/**
+ * True when `prop` is a data-property function the core itself declares — a
+ * method, not an accessor, and not something inherited from `Object.prototype`.
+ *
+ * The walk stops before `Object.prototype` deliberately: `toString`,
+ * `hasOwnProperty` and friends are not the core's surface, and binding them
+ * would hand back wrappers for members this binding has no business adapting.
+ */
+function isCoreMethod(target: object, prop: PropertyKey): boolean {
+    for (let o: object | null = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o) as object | null) {
         const descriptor = Object.getOwnPropertyDescriptor(o, prop);
-        if (descriptor) return typeof descriptor.value === 'function';
+        if (descriptor) return typeof descriptor.value === 'function' && prop !== 'constructor';
     }
     return false;
+}
+
+/**
+ * A proxy `get` trap MUST return the exact value of a non-writable,
+ * non-configurable own data property — returning a bound wrapper for one throws
+ * `TypeError: 'get' on proxy: property … is a read-only and non-configurable
+ * data property`.
+ *
+ * The core has no such property today, so this is a guard against a future one
+ * rather than a live fix; without it, a core author freezing a method would
+ * break every read through this binding with an error naming the proxy rather
+ * than the change that caused it.
+ */
+function isFrozenOwnProperty(target: object, prop: PropertyKey): boolean {
+    const descriptor = Object.getOwnPropertyDescriptor(target, prop);
+    return descriptor !== undefined && descriptor.writable === false && descriptor.configurable === false;
 }
 
 export const LangsysApp: LangsysAppVue = new Proxy(_LangsysApp, {
@@ -258,6 +281,14 @@ export const LangsysApp: LangsysAppVue = new Proxy(_LangsysApp, {
         const value = Reflect.get(target, prop, target);
         if (typeof value !== 'function') return value;
 
+        // Cache first: a hit skips both checks below, and the source comparison
+        // is what keeps a reassigned core method from serving a stale bind.
+        const cached = boundMembers.get(prop);
+        if (cached && cached.source === value) return cached.bound;
+
+        // Returning a wrapper here would violate a proxy invariant and throw.
+        if (isFrozenOwnProperty(target, prop)) return value;
+
         // Bind METHODS only — never the value an accessor computed.
         //
         // `get t()` returns a fresh `TFunction` closure that already reads state
@@ -266,10 +297,7 @@ export const LangsysApp: LangsysAppVue = new Proxy(_LangsysApp, {
         // depends on `TFunction` identity (a fresh closure per change, a stable
         // reference between changes) — so wrapping it would put a layer between
         // the core's identity signal and anyone comparing against it.
-        if (!isPrototypeMethod(target, prop)) return value;
-
-        const cached = boundMembers.get(prop);
-        if (cached && cached.source === value) return cached.bound;
+        if (!isCoreMethod(target, prop)) return value;
 
         const bound = (value as (...args: unknown[]) => unknown).bind(target);
         boundMembers.set(prop, { source: value, bound });
