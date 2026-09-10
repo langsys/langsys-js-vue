@@ -186,11 +186,17 @@ const overrides = {
  * with a green typecheck and a green suite, because nothing references what is
  * missing.
  *
- * It had already happened five times when the 838 audit found it —
- * `applyAuthorization`, `getUserLanguagePreferences`, `parseAcceptLanguageHeader`,
- * `findBestLocaleMatch` and `resolveLocale` were all on the core and simply not
- * on the list. Adding them by hand would have fixed the symptom and left the
- * mechanism running for the next core release to trip over.
+ * **Correction (2026-09-09).** An earlier version of this note claimed the old
+ * class had already dropped five core methods. It had not. All five names in
+ * that claim are declared `private` in the core, and TypeScript's `private` is
+ * erased at runtime — a prototype walk finds them, and reading that as lost API
+ * is the mistake. Measured against the core's `.d.ts`, the old wrapper dropped
+ * **zero** public members. No defect had shipped.
+ *
+ * The mechanism is still right, on the risk rather than on a past incident: a
+ * hand-written list cannot fail when the core grows a member, because nothing
+ * references what is missing. Forwarding removes the failure mode instead of
+ * waiting for it.
  *
  * Forwarding by reference is what BIND-6 actually asks for — "re-export by
  * reference everything that does not need adapting" — and it makes this binding
