@@ -205,26 +205,75 @@ const overrides = {
  * the structure rather than any method name, so a future core addition cannot
  * go missing quietly again.
  *
- * Forwarded members are returned **unbound**, so `LangsysApp.foo` and the core's
- * `foo` are the same function object. Calling through the proxy sets `this` to
- * the proxy, whose every read forwards to the core singleton, so the method sees
- * the core's state either way. Binding instead would make a destructured method
- * keep working here while the identical destructure off the core singleton
- * breaks — a behaviour difference, which is exactly what BIND-1 forbids a
- * binding from introducing.
+ * Forwarded functions are **bound to the core instance** (and cached, so a member
+ * read twice is the same object). An earlier revision forwarded them unbound, on
+ * the argument that binding would make a destructured method work here while the
+ * identical destructure off the core singleton throws — a divergence BIND-1
+ * forbids a binding from introducing.
  *
- * Safe because the core class uses no `#private` fields: those cannot be read
- * through a proxy receiver and would force binding, and with it that divergence.
- * `src/surface.test.ts` pins that assumption both structurally and by calling
- * through the proxy, so it stops being true loudly rather than silently.
+ * That argument was measured and did not hold: **this package already shipped
+ * that divergence.** `0.2.1`'s wrapper delegated in its own method bodies, which
+ * never read `this`, so `const { getCountries } = LangsysApp` worked for every
+ * installed consumer. Unbound forwarding did not preserve a property we had — it
+ * removed one. BIND-1 forbids *widening* what the core offers, not keeping what
+ * this binding already shipped. (Fleet ruling, topic `838-bind6-v2-vue`.)
+ *
+ * Binding also settles the receiver question from the other side: `this` inside a
+ * forwarded call is the core instance whatever the call site looks like, so
+ * correctness no longer rests solely on the core having no `#private` fields.
+ * That invariant is still pinned in `src/surface.test.ts` — two guarantees from
+ * two directions rather than one load-bearing assumption. `src/destructuring.test.ts`
+ * pins the shipped shape itself.
  */
+/**
+ * Bound-function cache, so a member read twice is the same object.
+ *
+ * `.bind()` mints a new function on every call, and a proxy `get` trap runs on
+ * every property read — so binding naively would make
+ * `LangsysApp.getCountries !== LangsysApp.getCountries`. The class this replaced
+ * had stable identity for free (methods live on a prototype), and consumers
+ * memoize on function identity all the time — a Vue `watch` source, a dependency
+ * array, a `Map` key. Re-minting would churn every one of them silently.
+ *
+ * Keyed on the source function too, not just the property name: if the core ever
+ * reassigns a method, the cached bind would otherwise keep calling the old one.
+ */
+const boundMembers = new Map<PropertyKey, { source: unknown; bound: unknown }>();
+
+/** True when `prop` is a data-property function somewhere on the prototype chain — a method, not an accessor. */
+function isPrototypeMethod(target: object, prop: PropertyKey): boolean {
+    for (let o: object | null = target; o; o = Object.getPrototypeOf(o) as object | null) {
+        const descriptor = Object.getOwnPropertyDescriptor(o, prop);
+        if (descriptor) return typeof descriptor.value === 'function';
+    }
+    return false;
+}
+
 export const LangsysApp: LangsysAppVue = new Proxy(_LangsysApp, {
     get(target, prop) {
         if (Object.prototype.hasOwnProperty.call(overrides, prop)) {
             return overrides[prop as keyof typeof overrides];
         }
         // `target` as the receiver, so getters read the core's own state.
-        return Reflect.get(target, prop, target);
+        const value = Reflect.get(target, prop, target);
+        if (typeof value !== 'function') return value;
+
+        // Bind METHODS only — never the value an accessor computed.
+        //
+        // `get t()` returns a fresh `TFunction` closure that already reads state
+        // at call time; it needs no receiver. Binding it would wrap a computed
+        // value in a new object on every read, and this binding's reactivity
+        // depends on `TFunction` identity (a fresh closure per change, a stable
+        // reference between changes) — so wrapping it would put a layer between
+        // the core's identity signal and anyone comparing against it.
+        if (!isPrototypeMethod(target, prop)) return value;
+
+        const cached = boundMembers.get(prop);
+        if (cached && cached.source === value) return cached.bound;
+
+        const bound = (value as (...args: unknown[]) => unknown).bind(target);
+        boundMembers.set(prop, { source: value, bound });
+        return bound;
     },
 }) as unknown as LangsysAppVue;
 

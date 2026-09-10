@@ -80,6 +80,22 @@ function classify(dtsText: string) {
 }
 
 const asRecord = (o: unknown) => o as unknown as Record<string, unknown>;
+
+/**
+ * True when the core exposes `name` as a method rather than an accessor.
+ *
+ * The distinction matters: methods are bound to the core, accessors are not —
+ * `get t()` returns a computed `TFunction` that needs no receiver, and wrapping
+ * it would put a layer between the core's identity signal and anyone comparing
+ * against it.
+ */
+function isCoreMethod(name: string): boolean {
+    for (let o: object | null = coreLangsysApp; o; o = Object.getPrototypeOf(o) as object | null) {
+        const d = Object.getOwnPropertyDescriptor(o, name);
+        if (d) return typeof d.value === 'function';
+    }
+    return false;
+}
 const split = classify(resolvedDtsText());
 
 describe('the public/private split is derived, and the derivation works', () => {
@@ -115,22 +131,54 @@ describe('BIND-6 — the binding forwards the core surface by reference', () => 
         expect(asRecord(LangsysApp)[name]).toBeDefined();
     });
 
-    it('forwards non-overridden public members by REFERENCE — the same object', () => {
+    it('forwards every non-overridden public member to the core, as a bound member', () => {
         const forwarded = split.publicMembers.filter((n) => !INTENTIONAL_OVERRIDES.has(n));
         expect(forwarded.length).toBeGreaterThan(0); // positive control
 
         for (const name of forwarded) {
-            // Identity, not equivalence: a re-implementation or a bound copy fails here.
-            expect(asRecord(LangsysApp)[name], `\`${name}\` is not the core's own member`).toBe(
-                asRecord(coreLangsysApp)[name]
+            const member = asRecord(LangsysApp)[name];
+            if (!isCoreMethod(name)) {
+                // Accessor-computed values and plain state pass through untouched.
+                expect(member, `\`${name}\` should pass through unwrapped`).toBe(asRecord(coreLangsysApp)[name]);
+                continue;
+            }
+            // A bound forward is a distinct object whose name records what it wraps.
+            // A re-implementation would not carry the core's member name; the raw
+            // core function would not carry the `bound ` prefix.
+            expect((member as { name: string }).name, `\`${name}\` is not a bound forward of the core's member`).toBe(
+                `bound ${name}`
             );
         }
     });
 
+    it('a forwarded call runs with the CORE as receiver, even detached', () => {
+        // The claim binding exists to make true. Asserted by observing `this`
+        // inside the core's own method rather than by inspecting the wrapper.
+        const proto = Object.getPrototypeOf(coreLangsysApp) as Record<string, unknown>;
+        const original = proto.detectPreferredLocale as (...a: unknown[]) => unknown;
+        let receiver: unknown;
+        proto.detectPreferredLocale = function (this: unknown, ...args: unknown[]) {
+            receiver = this;
+            return original.apply(this, args);
+        };
+        try {
+            const { detectPreferredLocale } = LangsysApp; // detached on purpose
+            detectPreferredLocale('en-US');
+        } finally {
+            proto.detectPreferredLocale = original;
+        }
+        expect(receiver).toBe(coreLangsysApp);
+    });
+
     it('overrides exactly the members it means to, and no more', () => {
-        const overridden = split.publicMembers.filter(
-            (name) => asRecord(LangsysApp)[name] !== asRecord(coreLangsysApp)[name]
-        );
+        // Since forwarding binds, identity no longer separates an override from a
+        // forward — both differ from the core's function. The discriminator is the
+        // member name: a bound forward carries `bound <name>`, an override carries
+        // its own.
+        const overridden = split.publicMembers.filter((name) => {
+            if (!isCoreMethod(name)) return false; // accessors are never overridden here
+            return (asRecord(LangsysApp)[name] as { name: string }).name !== `bound ${name}`;
+        });
         expect(new Set(overridden)).toEqual(INTENTIONAL_OVERRIDES);
     });
 
@@ -151,9 +199,9 @@ describe('BIND-6 — the binding forwards the core surface by reference', () => 
     it('forwards core-private members uniformly — a mechanism property, NOT API', () => {
         expect(split.privateMembers.length).toBeGreaterThan(0); // positive control
         for (const name of split.privateMembers) {
-            expect(asRecord(LangsysApp)[name], 'uniform forwarding should not special-case anything').toBe(
-                asRecord(coreLangsysApp)[name]
-            );
+            const member = asRecord(LangsysApp)[name];
+            expect(typeof member, 'uniform forwarding should not special-case anything').toBe('function');
+            expect((member as { name: string }).name).toBe(`bound ${name}`);
         }
     });
 });
