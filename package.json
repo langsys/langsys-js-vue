@@ -43,7 +43,8 @@
         "lint": "prettier --check . && eslint .",
         "format": "prettier --write .",
         "prepublishOnly": "npm run build",
-        "release": "./_dev_/publish.sh"
+        "release": "./_dev_/publish.sh",
+        "test:mutations": "node _dev_/mutations.mjs"
     },
     "keywords": [
         "i18n",

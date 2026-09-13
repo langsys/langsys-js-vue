@@ -4,6 +4,8 @@
 
 ### Added
 
+- **`<Translate>` with an explicit `custom_id` now carries its identity in server-rendered HTML.** The base SDK stamps `data-ls-contentblock` on a host when its DOM class mounts, and mounting never happens during server rendering — so served HTML carried no id on any `<Translate>` host, while the same component carried one after the client mounted it. An explicit `custom_id` *is* the resolved id and is known at render time, so it is now stamped on both paths, and the served host agrees with the mounted one (no hydration mismatch). A block with a **derived** id still has no id in served HTML: deriving it means tokenizing the rendered subtree, which only happens on mount or in a server SDK.
+
 - **`useWriteEnabled()` — whether the current session may register content, as decided by the server.** Returns `Readonly<ShallowRef<boolean | undefined>>`, and the tri-state is load-bearing: `undefined` means authorization hasn't landed yet, `false` means a genuinely read-only session, `true` means writes go direct. The same key can be write-enabled from one IP and read-only from another, so the answer is not derivable client-side.
 
     **Do not collapse `undefined` to `false`.** Telling a write-enabled session it is read-only is unrecoverable without a full reload — nothing re-runs the decision — and upstream it converts "hold these misses until we know" into "drop them", silently discarding phrases that would have registered a moment later. The README documents the three-way branch; `?? false` and `!writeEnabled` are both wrong.
@@ -31,6 +33,12 @@
 
 - **`iLangsysInitConfig.writeGrant` is widened to `WriteGrantSource`** (`WriteGrant | Ref<string | null | undefined>`). Purely additive — every value the vanilla config accepted is still accepted, and `init` normalizes on the way through.
 - **README: the API-key permissions section no longer says the SDK detects the key type itself.** It doesn't, and can't: the server computes `write_enabled` per session and returns it. The old wording implied a client-side determination that a reader could reasonably have branched on.
+
+### Fixed
+
+- **Switching a `<Translate>` from an explicit `custom_id` to a derived one no longer leaves the host unmarked.** The component re-created the base SDK's DOM class *before* Vue patched the host, so the core stamped the derived id and Vue's patch then removed the attribute the previous render had declared. It now re-creates *after* the patch (`flush: 'post'`), which is also the right order for a class that walks the rendered subtree.
+- **README-SSR taught a server-rendering hand-off that did not do what it claimed.** It initialized the SDK in `onMounted`, which never runs on the server, so served HTML was always base language — while the page promised "better SEO with server-rendered translations" and "no flash of untranslated content". It now teaches `LangsysApp.seedCatalog(translations, locale)`: synchronous, on both sides, before anything renders. `init({ initialTranslations })` is documented as **not** a substitute, because `init()` applies it only after its authorization round trip. The guide also states two limits plainly: the server-side seed is **process-global** (concurrent renders in different locales serve each other's text — measured), and `<Translate>`/`<Phrase>` serve base language until they mount.
+- **README told integrators that `apiUrl` does not exist and to use `LangsysAppAPI.setBaseUrl()` instead.** The base SDK this release ships against declares `apiUrl` on `init()` and applies it before authorizing, and warns that `setBaseUrl()` called after `init()` leaves the SDK permanently inert. The README now documents `apiUrl` as the way to point the SDK at another server or a test double.
 
 ## 0.2.1 - 2026-08-18
 

@@ -246,3 +246,28 @@ describe('proxy precondition — the core uses no #private fields', () => {
         expect(viaProxy).toBeTruthy();
     });
 });
+
+describe('WIRE-5 — the API base is redirectable without patching the artifact, and findable', () => {
+    it('re-exports LangsysAppAPI with a setBaseUrl the integrator can call before init()', async () => {
+        const pkg = (await import('./index.js')) as Record<string, unknown>;
+        const api = pkg.LangsysAppAPI as { setBaseUrl?: unknown } | undefined;
+        expect(typeof api?.setBaseUrl).toBe('function');
+    });
+
+    it("control: it is the core's own client, not a copy that could diverge", async () => {
+        const pkg = (await import('./index.js')) as Record<string, unknown>;
+        const core = (await import('langsys-js-typescript')) as Record<string, unknown>;
+        expect(pkg.LangsysAppAPI).toBeDefined();
+        expect(pkg.LangsysAppAPI).toBe(core.LangsysAppAPI);
+    });
+
+    it('is documented where an integrator looks — the README, as the init() option', () => {
+        const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+        expect(readme).toMatch(/apiUrl: 'http:\/\/localhost:8000\/api'/);
+        // An earlier revision of this test asserted the README said there was NO `apiUrl`
+        // field. That was true of the published base SDK and false of the one this binding
+        // ships against, which added `apiUrl` and warns that `setBaseUrl()` after `init()`
+        // leaves the SDK inert. A doc test that pins a sentence can pin a wrong one.
+        expect(readme).not.toMatch(/no `apiUrl` field/i);
+    });
+});

@@ -19,9 +19,21 @@ src/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
         Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
         DontTranslate.ts      # presentational translate="no" host
-    adapters.test.ts          # coverage for the adapter contracts
-    composables.test.ts       # useWriteEnabled — SSR/hydration/tri-state coverage
+    adapters.test.ts          # adapter contracts: locale store, Ref→Signal, Ref→grant provider
+    composables.test.ts       # useWriteEnabled — SSR, hydration latch, tri-state, teardown
     components.test.ts        # structural (SSR-rendered) component coverage
+    rendered.test.ts          # the tri-state through rendered DOM output
+    route-reentry.test.ts     # t() re-entry at the new URL under vue-router, behind URL-moved + re-render controls
+    surface.test.ts           # BIND-6 proxy: .d.ts-derived surface, bound forwarding, WIRE-5 export
+    surface-types.test.ts     # compile-time: no core-private members in the type, no extra config keys
+    destructuring.test.ts     # the 0.2.1 destructuring shape; GRANT-3 promise identity
+    write-enabled-absence.test.ts # the raw writeEnabled signal stays withheld
+    upstream-precondition.test.ts # the resolved core carries the 838 surface (symlink guard)
+    marker-ssr.test.ts        # MARK-1: served <Translate> host identity vs the core's own stamp
+    hydration-handoff.test.ts # SRV-4: synchronous seed before mount vs an unseeded control
+    hydration-handoff-init.test.ts # SRV-4: init() seeds only after its round trip (own process)
+    api-redirect.test.ts      # WIRE-5: apiUrl through the init override reaches a double (own process)
+_dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable (npm run test:mutations)
 example/                      # Vite playground (npm run dev) — not published
 ```
 
@@ -47,8 +59,9 @@ Components are authored as `defineComponent` + `h()` render functions in plain `
 
 ```typescript
 // Main entry point — wraps init to accept a Signal<string>, delegates everything else
-LangsysApp.init({ projectid, key, UserLocaleStore, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale?, writeGrant? })
-// No apiUrl field — point at another server with LangsysAppAPI.setBaseUrl() BEFORE init().
+LangsysApp.init({ projectid, key, UserLocaleStore, apiUrl?, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale?, writeGrant? })
+// apiUrl points at another server or a test double; the core applies it inside init() before authorizing.
+// LangsysAppAPI.setBaseUrl() only works BEFORE init() — afterwards it leaves the SDK permanently inert.
 LangsysApp.t                     // current TFunction (snapshot — not reactive on its own; use useT())
 LangsysApp.getCountries() / getCurrencies() / getDialCodes() / getLocales*() / ...
 LangsysApp.detectPreferredLocale(acceptLanguageHeader?, supportedLocales?)
@@ -97,7 +110,8 @@ WriteGrantSource (the Vue-flavored one — WriteGrant | Ref<string | null | unde
 - `npm run dev` — Vite dev server with the demo in `example/`. Needs `.env` at the repo root with `VITE_LANGSYS_PROJECT_ID` and `VITE_LANGSYS_API_KEY` (see `.env.example`).
 - `npm run typecheck` — `tsc --noEmit`. Should be clean before any commit. CI runs it.
 - `npm run build` — `tsup` → builds ESM + CJS + `.d.ts` to `dist/`.
-- `npm run test` — Vitest (`vitest run`), node environment (component tests assert server-rendered output via `vue/server-renderer`).
+- `npm run test` — Vitest (`vitest run`), node environment by default; DOM suites opt into jsdom per file.
+- `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale.
 - `npm run lint` / `npm run format` — Prettier + ESLint (flat config in `eslint.config.mjs`). Not run in CI.
 
 Note: the Vite/Vitest configs use the `.mts` extension (`vite.config.mts`, `vitest.config.mts`) so they load as ESM on Node versions without `require(esm)` support.
@@ -152,10 +166,15 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Never collapse `writeEnabled`'s tri-state.** `undefined` means "the server hasn't answered yet", not "read-only". Defaulting it to `false` tells a write-enabled session it can't write, which is unrecoverable without a reload, and upstream it converts "hold these misses" into "drop them". This applies to our own code as much as to consumers' — don't add a `?? false` anywhere in the read path.
 - **`useWriteEnabled`'s hydration latch must stay a macrotask.** `setTimeout(0)`, not `nextTick()` / `queueMicrotask` / `Promise.resolve()`. A microtask drains inside the same hydration pass, so it reintroduces the mismatch. `src/composables.test.ts` pins this with a test that fails on a microtask latch.
 - **Keep `refToWriteGrant` lazy and non-subscribing.** It must return a provider that reads on every call. Snapshotting the ref produces a grant that can never refresh — and since grants are short-lived, that passes every test that doesn't specifically check for it and then expires in production.
+- **A served `<Translate>` host carries its explicit `custom_id`, and the DOM class re-creates after Vue patches.** The core stamps `data-ls-contentblock` only on mount, which never happens during SSR, so the binding stamps an explicit id in `h()`. The attribute name is a literal because the core does not export `CONTENT_BLOCK_MARKER_ATTR`; `marker-ssr.test.ts` cross-checks it against the core's own stamp. Keep the re-create watcher on `flush: 'post'`: pre-flush, switching explicit→derived let Vue's patch remove the stamp the core had just written.
+- **The SSR hand-off is `seedCatalog()` — synchronous, on both sides, before anything renders.** `init({ initialTranslations })` applies its catalog only after an authorization round trip, so it can never seed the first client render. And the server-side seed is process-global: concurrent renders in different locales leak into each other. Do not document server-rendered translation as safe under mixed-locale concurrency.
+- **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads.
 
 ## Testing approach
 
-Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. The live reactive path is exercised by the `example/` playground.
+Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. DOM-level suites run under jsdom per file: `rendered.test.ts` and `route-reentry.test.ts` (real `vue-router`, including `<KeepAlive>` and param-only navigation), `marker-ssr.test.ts` (served HTML vs the core's own stamp on a plain element), and the SRV-4 hydration pair, which hydrates real server output and captures Vue's own mismatch warnings. Any case that calls `init()` gets its own file, because a second `init()` in one process is a no-op and would let the case pass without init running. The live reactive path is also exercised by the `example/` playground.
+
+**A route re-entry verdict counts only behind two controls.** Every case in `route-reentry.test.ts` first asserts that the URL moved to the new route and that a component inside `<RouterView>` re-entered `t()` at that URL; the fake `t()` records `window.location.href` per call for exactly this. Without them, a memory history (the URL never moves, so a correct re-entry captures the old URL) or a read before `router.push()` settles (nothing has re-rendered) turns a correct binding into "does not re-enter". Keep a history that moves `window.location`, keep the settle, and keep M22 and M23 red.
 
 **Every new test must demonstrate its failing case before its passing one** — a check that cannot fail is not evidence. In practice that means either an inline positive control (adapt the same input with the naive/wrong implementation and assert it produces the bug) or a verified mutation of the implementation. The `refToWriteGrant` and `useWriteEnabled` suites do the former inline; both were additionally mutation-checked (naive `useSignal` passthrough, microtask latch, `undefined`→`false`, snapshotting adapter, eager-read adapter) and each mutation fails the suite.

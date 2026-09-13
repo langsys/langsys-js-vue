@@ -3,6 +3,18 @@ import type { PropType } from 'vue';
 import { Translate as VanillaTranslate, type ParamPrimitive } from 'langsys-js-typescript';
 
 /**
+ * The host attribute carrying a content block's identity (MARK-1).
+ *
+ * Duplicated here as a literal because the core does not export it from its main
+ * entry: it exports `PHRASE_MARKER_ATTR` but keeps `CONTENT_BLOCK_MARKER_ATTR`
+ * internal (`identity.ts`). A literal can drift from the core silently, so
+ * `src/marker-ssr.test.ts` checks it against the attribute the core itself stamps —
+ * if the core renames it, that test goes red. Replace with the import once the core
+ * exports the constant.
+ */
+const CONTENT_BLOCK_MARKER_ATTR = 'data-ls-contentblock';
+
+/**
  * Props for the Vue `Translate` component. Mirrors the React/Svelte components
  * 1:1 — Vue passes `class` through native attribute fallthrough, so no
  * `class`/`className` prop is declared.
@@ -67,7 +79,12 @@ export const Translate = defineComponent({
         };
 
         onMounted(create);
-        watch(() => [props.category, props.custom_id, props.label], create);
+        // `flush: 'post'` — re-create the DOM class AFTER Vue patches the host. With the
+        // default pre-flush, switching from an explicit `custom_id` to a derived one ran
+        // `create()` first (the core stamped the derived id) and Vue's patch then removed
+        // the attribute the previous vnode had declared, leaving the host unmarked. It is
+        // also the right order for a class that walks the rendered subtree.
+        watch(() => [props.category, props.custom_id, props.label], create, { flush: 'post' });
         // Param changes (e.g. a changed count) flow through setParams without recreating.
         watch(
             () => props.params,
@@ -76,7 +93,18 @@ export const Translate = defineComponent({
         );
         onBeforeUnmount(() => instance?.destroy());
 
-        return () => h(props.tag, { ref: host }, slots.default?.());
+        // MARK-1 on the server-render path. The core's DOM class stamps a host on mount,
+        // which never happens during SSR, so served HTML used to carry no id at all. An
+        // explicit `custom_id` IS the resolved id and is known at render time, so it is
+        // stamped here and the served host agrees with the mounted one. A derived id
+        // needs the subtree tokenized, which only happens on mount (or in a server SDK),
+        // so it is still stamped by the core — the SSR half of that case is a known gap.
+        return () =>
+            h(
+                props.tag,
+                { ref: host, ...(props.custom_id ? { [CONTENT_BLOCK_MARKER_ATTR]: props.custom_id } : {}) },
+                slots.default?.()
+            );
     },
 });
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LangsysApp } from './index.js';
+import type { iLangsysInitConfig as VanillaInitConfig } from 'langsys-js-typescript';
+import type { iLangsysInitConfig } from './index.js';
 
 /**
  * BIND-6 v2 (b) — the exported type must expose the core's PUBLIC surface and
@@ -68,5 +70,36 @@ describe('BIND-6 — the exported type exposes only the core public surface', ()
         // runtime `expect`.
         const reachableAtRuntime = 'resolveLocale' in (LangsysApp as unknown as object);
         expect(reachableAtRuntime).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// BIND-4 — the binding introduces no configuration the core does not define.
+//
+// Vue's config WIDENS two existing keys (`UserLocaleStore`, `writeGrant`) to accept
+// Vue shapes, and that is allowed; adding a key is not. A key only this binding knows
+// about is one a plain-JS caller could rely on while every other binding silently drops
+// it. Checked by `npm run typecheck`.
+// ---------------------------------------------------------------------------
+type ExtraKeys<T> = Exclude<keyof T, keyof VanillaInitConfig>;
+type NoExtraKeys<T> = [ExtraKeys<T>] extends [never] ? true : false;
+
+/** The assertion. */
+const bind4NoExtraKeys: NoExtraKeys<iLangsysInitConfig> = true;
+
+/**
+ * Positive control: a config carrying one extra key must fail the same check — without
+ * this, the assertion above would pass against a helper that always says `true`.
+ */
+// The control key must be one the core does NOT define. An earlier revision used `apiUrl`,
+// and this control stayed silent — correctly: the core's config gained `apiUrl`, so it was
+// never an extra key. The control caught its own bad example, which is its job.
+// @ts-expect-error an added key must be detected
+const bind4ControlDetectsExtraKey: NoExtraKeys<iLangsysInitConfig & { notACoreConfigKey: string }> = true;
+
+describe('BIND-4 — no configuration the core does not define', () => {
+    it('is enforced at compile time; both the assertion and its control are live', () => {
+        expect(bind4NoExtraKeys).toBe(true);
+        expect(bind4ControlDetectsExtraKey).toBe(true);
     });
 });

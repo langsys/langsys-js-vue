@@ -11,7 +11,14 @@ In a traditional SSR flow:
 
 ## The solution
 
-Pass pre-fetched translations from server to client using the `initialTranslations` config option. The client SDK uses them as-is and skips the initial fetch. Because `useSignal` seeds its ref synchronously from the signal's current value, the first paint already reflects the seeded translations.
+Render with the catalog on the server, and hand the **same** catalog to the client **synchronously, before hydration**, with `LangsysApp.seedCatalog(translations, locale)`.
+
+Two properties decide whether that works, and both are measured by this repo's tests rather than assumed:
+
+- **The seed must be synchronous.** `useT()` reads the catalog at the moment a component renders, so whatever the catalog holds when the first client render happens is what that render shows — and hydration does not wait. `seedCatalog()` returns nothing and needs no `await`: call it before the app mounts and the first client render is byte-identical to the served HTML. **`LangsysApp.init({ initialTranslations })` is not a substitute.** `init()` applies `initialTranslations` only after its authorization round trip, so however fast that is, the first client render has already happened: called before mount, it leaves hydration to mismatch. `src/hydration-handoff-init.test.ts` pins both halves — the mismatch, and that `init()` does seed once the round trip resolves.
+- **Seed both sides, with the same catalog.** A server that renders Italian and a client that hydrates unseeded disagree on the first render. So do the reverse.
+
+> **The server-side seed is process-global.** This binding reads the base SDK's module-level catalog, so `seedCatalog()` on the server sets it for **every request that process is rendering** — not just yours. Two concurrent renders in different locales serve each other's text. That is measured, not hypothetical: an Italian and a German render interleaved across a single `await` both served German. Only server-render translated HTML with this binding where a process never renders two locales at the same time — a per-locale deployment, or rendering serialized. Request-scoped server rendering is not implemented in this binding; `CONFORMANCE.md` records it under SRV-1–SRV-5.
 
 ## Nuxt
 
@@ -53,7 +60,7 @@ export default defineNuxtConfig({
 });
 ```
 
-### Step 2: Load the payload during SSR and initialize on the client
+### Step 2: Seed both sides, then initialize on the client
 
 ```vue
 <!-- app.vue -->
@@ -63,18 +70,24 @@ import { LangsysApp, refToLocaleSource } from 'langsys-js-vue';
 // Runs on the server during SSR; the payload transfers to the client for free.
 const { data } = await useAsyncData('langsys', () => $fetch('/api/langsys', { query: { locale: 'en' } }));
 
+// Seed before anything renders — on the server AND on the client, with the same catalog.
+// Synchronous by design: the first client render must match the served HTML.
+// Read the process-global warning above before doing this on a server that renders
+// more than one locale at a time.
+if (data.value) LangsysApp.seedCatalog(data.value.translations, data.value.locale);
+
 // Nuxt-owned locale state, adapted to the SDK's store contract.
 const locale = useState('locale', () => data.value?.locale ?? 'en');
 
 onMounted(() => {
     const config = useRuntimeConfig();
+    // init() owns everything after the first paint — authorization, locale changes,
+    // discovery. It will not re-seed a locale that is already seeded.
     LangsysApp.init({
         projectid: config.public.langsysProjectId,
         key: config.public.langsysApiKey, // read-only key on the client
         UserLocaleStore: refToLocaleSource(locale),
         baseLocale: 'en',
-        initialTranslations: data.value?.translations,
-        initialTranslationsLocale: data.value?.locale,
         ssrTokenStrategy: 'client',
     });
 });
@@ -139,24 +152,20 @@ function changeLocale(next: string) {
 
 ## Plain Vite SSR (no Nuxt)
 
-The same handoff works with any Vue SSR setup: fetch the catalog in your server entry, serialize `{ locale, translations }` into the page payload, and call `LangsysApp.init` with `initialTranslations` / `initialTranslationsLocale` in your client entry before mounting.
+The same hand-off works with any Vue SSR setup. In your server entry, call `LangsysApp.seedCatalog(translations, locale)` before `renderToString`, and serialize `{ locale, translations }` into the page payload. In your client entry, read that payload and call `LangsysApp.seedCatalog(translations, locale)` **before** `app.mount()`. Call `LangsysApp.init(...)` afterwards for everything after the first paint. The process-global warning above applies to the server entry.
 
-## Benefits
+## What this buys you — and what it does not
 
-### Performance
-- No duplicate API calls (server + client).
-- Translations ready immediately on hydration.
-- Faster Time to Interactive (TTI).
-- Reduced API usage and costs.
+With the catalog seeded on both sides:
 
-### User experience
-- No flash of untranslated content.
-- Instant translation display.
-- Better SEO with server-rendered translations.
+- No duplicate catalog fetch on hydration.
+- The first client render matches the served HTML, so there is no hydration mismatch and no flash of untranslated `useT()` text.
+- The served bytes carry translated `useT()` text, so crawlers index the translated page.
 
-### Developer experience
-- Simple configuration.
-- Full TypeScript support, including compile-time-checked interpolation params on `t()`.
+Not yet, and worth knowing before you rely on it:
+
+- **`<Translate>` and `<Phrase>` serve base language.** Their translation runs in the base SDK's DOM classes, which only run when a component mounts. Served HTML carries the source text and the client translates it after hydration. `<Translate>` with an explicit `custom_id` does carry its identity (`data-ls-contentblock`) in the served HTML; a block with a derived id does not.
+- **Mixed-locale concurrency leaks.** See the process-global warning above.
 
 ## Configuration options
 
@@ -183,12 +192,12 @@ Look for:
 
 ## Important notes
 
-1. **One-time use.** `initialTranslations` is consumed only at init. Locale changes after init go through the normal fetch path.
+1. **`initialTranslations` is not the hand-off.** It is consumed at `init()`, which is asynchronous, so it cannot seed the first client render. Use `seedCatalog()` for that. Locale changes after init go through the normal fetch path.
 2. **Matching locales.** Always provide `initialTranslationsLocale` with `initialTranslations` so the SDK knows what locale the data represents.
 3. **Data format.** The translations payload must match the `iCategories` shape returned by `LangsysAppAPI.getTranslations()`.
 4. **Cache.** The 60-second locale cache still applies. Pre-fetched translations count as cached.
 5. **Token creation.** Use a read-only API key for the client in production — missing tokens won't be sent. Keep the write key on the server (and ideally pre-populate tokens via your local dev environment).
-6. **Client-side init.** `LangsysApp.init` belongs in `onMounted` (client-only) so the server render and the first client render agree; the seeded signals cover the server output.
+6. **Seed, then init.** `seedCatalog()` is the hand-off: synchronous, on both sides, before anything renders. `LangsysApp.init` belongs in `onMounted` (client-only) and owns everything after the first paint; it will not re-seed a locale you already seeded.
 
 ## Troubleshooting
 
@@ -198,13 +207,13 @@ Look for:
 - Enable `debug: true` and look for the messages above.
 
 ### Still seeing duplicate API calls
-- Confirm both `initialTranslations` *and* `initialTranslationsLocale` are passed.
-- Confirm init runs before any rendering that calls `t(...)`.
+- Confirm `seedCatalog()` ran with the locale the client starts in, before `init()`.
 - Confirm the locale hasn't drifted between server and client.
 
 ### Hydration mismatch warnings
+- Seed the client with the **same** catalog and locale the server rendered with, **synchronously, before mount** — `seedCatalog()`, not `init({ initialTranslations })`.
+- If you seed the server, seed the client too; if you don't seed the server, don't seed the client before hydration either.
 - Make sure the `locale` you seed on the server matches the initial value of the locale state on the client.
-- Keep `LangsysApp.init` inside `onMounted` (client-only) so the server render and the first client render agree.
 
 ### TypeScript errors on `t()`
 - Placeholders are compile-time-checked: `t('Hello, {name}!', 'Cat')` *requires* a params object with `name`. Either add the key or remove the placeholder.

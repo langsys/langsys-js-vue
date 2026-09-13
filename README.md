@@ -70,7 +70,7 @@ onMounted(() => {
         baseLocale: 'en-US',
         debug: false,
         ssrTokenStrategy: 'client',
-        // For a local/self-hosted server, call LangsysAppAPI.setBaseUrl(url) before init().
+        // For a local/self-hosted server or a test double: apiUrl: 'http://localhost:8000/api'.
     }).then((res) => {
         if (res.status) ready.value = true;
         else error.value = res.errors?.join(', ') ?? 'Init failed';
@@ -93,18 +93,22 @@ Locale identifiers are canonicalized by the base SDK: mixed-case input like `'en
 
 ### Pointing the SDK at a different API server
 
-By default the SDK talks to `https://api.langsys.dev/api`. To test against a local or self-hosted instance, call `LangsysAppAPI.setBaseUrl()` **before** `init()`:
+By default the SDK talks to `https://api.langsys.dev/api`. To point it at a local instance, a staging host, or a test double, pass `apiUrl` to `init()`:
 
 ```typescript
-import { LangsysApp, LangsysAppAPI } from 'langsys-js-vue';
+import { LangsysApp } from 'langsys-js-vue';
 
-// Must run before init() — init() starts fetching immediately.
-LangsysAppAPI.setBaseUrl('http://localhost:8000/api');
-
-await LangsysApp.init({ projectid, key, UserLocaleStore: store });
+await LangsysApp.init({
+    projectid,
+    key,
+    UserLocaleStore: store,
+    apiUrl: 'http://localhost:8000/api',
+});
 ```
 
-> There is **no `apiUrl` field on `init()`** in any released version of the base SDK — `setBaseUrl()` is the only mechanism. TypeScript rejects `apiUrl` as an excess property, but a plain-JS caller would have it silently dropped and keep talking to production, so don't reach for it.
+`apiUrl` is applied inside `init()`, **before** it authorizes, in the same call that consumes it — so there is no ordering to get wrong. Prefer it.
+
+`LangsysAppAPI.setBaseUrl()` still exists, but it only works **before** `init()`. Called afterwards, it leaves the SDK permanently inert: `init()` has already authorized against the default host and failed, nothing throws, and no later change recovers it.
 
 ### SSR token strategy
 
@@ -362,7 +366,7 @@ Renders the host with `translate="no"`, which the base SDK's tokenizer and rende
 
 ## Server-Side Rendering (Nuxt)
 
-The SDK is SSR-compatible. The main pattern is to pre-fetch translations server-side and seed them through `initialTranslations` / `initialTranslationsLocale` so the client doesn't refetch on hydration. `useSignal` seeds its ref synchronously from the signal's current value, so components hydrate without a flash of untranslated content when seeded.
+The SDK is SSR-compatible. Hand the client the catalog the server rendered with by calling `LangsysApp.seedCatalog(translations, locale)` **synchronously, on both sides, before anything renders** — the first client render then matches the served HTML. `init({ initialTranslations })` is asynchronous and cannot do this. Two limits apply today: the server-side seed is **process-global**, so a server rendering several locales concurrently leaks them into each other, and `<Translate>`/`<Phrase>` serve base language until they mount.
 
 📖 **See [README-SSR.md](./README-SSR.md)** for a complete Nuxt walkthrough.
 

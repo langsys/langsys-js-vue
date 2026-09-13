@@ -102,13 +102,18 @@ describe('destructured members stay callable — the 0.2.1 shape', () => {
         const proto = Object.getPrototypeOf(coreLangsysApp) as Record<string, unknown>;
         const original = proto.setWriteGrant as (...a: unknown[]) => unknown;
         let received: unknown;
+        const reauthorization = Promise.resolve('re-authorized');
         proto.setWriteGrant = function (this: unknown, grant: unknown) {
             received = grant;
-            return Promise.resolve();
+            return reauthorization;
         };
         try {
             const grantRef = ref<string | null>('first');
-            await setWriteGrant(grantRef);
+            const returned = setWriteGrant(grantRef);
+            // GRANT-3: a caller awaits the new decision, so the override must hand back the
+            // core's own re-authorization promise — not a fresh one that resolves early.
+            expect(returned).toBe(reauthorization);
+            await returned;
             expect(typeof received, 'a Ref must be adapted, not passed through').toBe('function');
             expect((received as () => unknown)()).toBe('first');
             grantRef.value = 'rotated';
