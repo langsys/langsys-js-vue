@@ -364,7 +364,7 @@ When a server has already rendered part of a page in the visitor's locale, mark 
 
 `<Translate>` and `<Phrase>` inside a marked element register nothing and report nothing; the nearest marked ancestor decides, so the marker can sit anywhere above them. `data-ls-resolved="false"` on a nearer element opts a region back out. A block keeps its `custom_id` and still translates on a later render — the marker says the text is not source, not that it is untranslatable (that is `<DontTranslate>`).
 
-`useT()` cannot see the marker: a bare `t()` call has no element to walk up from, so text rendered through `useT()` inside a resolved region is still discovered. Render already-translated text in such a region through `<Translate>` or `<Phrase>`.
+The marker governs DOM content — `<Translate>`, `<Phrase>` and content blocks. `useT()` is outside it by design: a `t()` call's argument is source text your code supplies, not text a server rendered, so it is discovered wherever the component renders. Render server-translated text through `<Translate>` or `<Phrase>`. The project setting that stops discovery on pages loaded in a translated locale covers `t()` too.
 
 ## Route changes (Vue Router)
 

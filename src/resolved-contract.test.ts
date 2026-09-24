@@ -157,11 +157,12 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
     });
 
     /**
-     * A bare `t()` call has no DOM host, so no reader can walk to the marker. Measured, not
-     * assumed: `useT()` inside a resolved subtree still registers. This pins the gap GATE-10's
-     * row records; it goes red if the path ever starts honouring the marker.
+     * The rule's negative control. GATE-10's readers are DOM hosts; a bare `t()` call has no
+     * subtree and its argument is source text the app's code supplied, so `useT()` inside a
+     * resolved subtree records its miss (GATE-9 is the gate for `t()`). This keeps a reader
+     * that walks up from any call site from passing as conformant.
      */
-    it('known gap: useT() inside a resolved subtree still registers', async () => {
+    it('control: useT() under a resolved ancestor still registers — t() is outside the rule', async () => {
         mount(() =>
             h('div', [h('div', { 'data-ls-resolved': '' }, [h(UsesT('Resolved via t G'))]), single('Source single G')])
         );
