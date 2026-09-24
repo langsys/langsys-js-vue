@@ -92,6 +92,15 @@ export { Translate, type TranslateProps } from './components/Translate.js';
 export { Phrase, type PhraseProps } from './components/Phrase.js';
 export { DontTranslate, type DontTranslateProps } from './components/DontTranslate.js';
 
+// HINT-13 — route changes re-enter the SDK. `syncNavigation(router)` wires Vue Router;
+// `notifyNavigation()` is the core's entry point, for any other router.
+export { notifyNavigation, syncNavigation, type NavigationSource } from './navigation.js';
+
+// MSG — server messages. `useServerMessage()` is the reactive render; resolving entries out of a
+// response body, and the render decision itself, are the core's.
+export { useServerMessage } from './server-message.js';
+export { resolveServerMessages, renderServerMessage, type ServerMessage } from 'langsys-js-typescript';
+
 // Type re-exports — these are framework-agnostic, so consumers can rely on them
 // directly without reaching into `langsys-js-typescript`.
 export type {

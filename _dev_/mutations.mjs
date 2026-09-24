@@ -16,10 +16,17 @@
  *
  * Exit 0 only when the baseline is green AND every mutation turned its check red.
  *
+ * It never writes to the checkout it is started from. It runs in a temporary git worktree at
+ * HEAD with the checkout's uncommitted changes and untracked files copied in, and
+ * `node_modules` linked, so the SDK under test is the one the checkout resolves. The worktree
+ * is removed afterwards.
+ *
  *   npm run test:mutations
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 
 const vitest = (...files) => ({ label: `vitest ${files.join(' ')}`, cmd: 'npx', args: ['vitest', 'run', ...files] });
 const typecheck = { label: 'tsc --noEmit', cmd: 'npx', args: ['tsc', '--noEmit'] };
@@ -255,12 +262,12 @@ export const MUTATIONS = [
     {
         id: 'M17',
         rules: 'MARK-1',
-        what: "the duplicated marker literal drifts from the core's attribute name",
+        what: "the served stamp uses an attribute name other than the core's",
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: "const CONTENT_BLOCK_MARKER_ATTR = 'data-ls-contentblock';",
-                replace: "const CONTENT_BLOCK_MARKER_ATTR = 'data-ls-content-block';",
+                find: '{ [CONTENT_BLOCK_MARKER_ATTR]: props.custom_id }',
+                replace: "{ ['data-ls-content-block']: props.custom_id }",
             },
         ],
         check: vitest('src/marker-ssr.test.ts'),
@@ -342,7 +349,115 @@ export const MUTATIONS = [
         ],
         check: vitest('src/route-reentry.test.ts'),
     },
+    {
+        id: 'M24',
+        rules: 'GATE-10',
+        what: '<Translate> hands the core a detached copy of its host instead of the host in the page',
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: 'new VanillaTranslate(host.value, {',
+                replace: 'new VanillaTranslate(host.value.cloneNode(true) as HTMLElement, {',
+            },
+        ],
+        check: vitest('src/resolved-contract.test.ts'),
+    },
+    {
+        id: 'M25',
+        rules: 'GATE-10',
+        what: '<Phrase> hands the core a detached copy of its host instead of the host in the page',
+        file: 'src/components/Phrase.ts',
+        edits: [
+            {
+                find: 'new VanillaPhrase(host.value, {',
+                replace: 'new VanillaPhrase(host.value.cloneNode(true) as HTMLElement, {',
+            },
+        ],
+        check: vitest('src/resolved-contract.test.ts'),
+    },
+    {
+        id: 'M26',
+        rules: 'HINT-13',
+        what: "syncNavigation no longer calls the core's notifyNavigation() after a route change",
+        file: 'src/navigation.ts',
+        edits: [{ find: 'if (!failure) notifyNavigation();', replace: 'void failure;' }],
+        check: vitest('src/navigation-contract.test.ts'),
+    },
+    {
+        id: 'M27',
+        rules: 'MSG-5',
+        what: 'useServerMessage stops depending on useT(), so a mounted list never re-renders on a catalog change',
+        file: 'src/server-message.ts',
+        edits: [{ find: '        void t.value;\n', replace: '' }],
+        check: vitest('src/server-message.test.ts'),
+    },
+    {
+        id: 'M28',
+        rules: 'MSG-5, MSG-6',
+        what: "useServerMessage drops the caller's category",
+        file: 'src/server-message.ts',
+        edits: [{ find: 'renderServerMessage(entry, category)', replace: 'renderServerMessage(entry)' }],
+        check: vitest('src/server-message.test.ts'),
+    },
+    {
+        id: 'M29',
+        rules: 'MSG-5',
+        what: "useServerMessage hands the core the entry's message as its template",
+        file: 'src/server-message.ts',
+        edits: [
+            {
+                find: 'renderServerMessage(entry, category)',
+                replace: 'renderServerMessage({ ...entry, template: entry.message }, category)',
+            },
+        ],
+        check: vitest('src/server-message.test.ts'),
+    },
 ];
+
+/**
+ * Re-run this script inside a temporary worktree that reproduces the checkout, and exit with
+ * its code. The checkout itself is never written to.
+ */
+function runInWorktree() {
+    const git = (...args) => {
+        const r = spawnSync('git', args, { encoding: 'utf8' });
+        if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`);
+        return r.stdout;
+    };
+    const root = git('rev-parse', '--show-toplevel').trim();
+    const head = git('rev-parse', 'HEAD').trim();
+    const dir = join(mkdtempSync(join(tmpdir(), 'langsys-vue-mutations-')), 'tree');
+    git('-C', root, 'worktree', 'add', '--detach', dir, head);
+    try {
+        const diff = spawnSync('git', ['-C', root, 'diff', '--binary', 'HEAD'], { encoding: 'buffer' }).stdout;
+        if (diff.length) {
+            const applied = spawnSync('git', ['-C', dir, 'apply', '--whitespace=nowarn'], { input: diff });
+            if (applied.status !== 0) throw new Error(`could not apply the checkout's changes: ${applied.stderr}`);
+        }
+        const untracked = git('-C', root, 'ls-files', '--others', '--exclude-standard', '-z')
+            .split('\0')
+            .filter(Boolean);
+        for (const file of untracked) {
+            mkdirSync(dirname(join(dir, file)), { recursive: true });
+            copyFileSync(join(root, file), join(dir, file));
+        }
+        symlinkSync(resolve(root, 'node_modules'), join(dir, 'node_modules'));
+        console.log(
+            `Worktree at HEAD ${head.slice(0, 7)}${diff.length || untracked.length ? ", plus the checkout's uncommitted changes" : ''}.\n`
+        );
+        const r = spawnSync(process.execPath, [join(dir, '_dev_', 'mutations.mjs'), ...process.argv.slice(2)], {
+            cwd: dir,
+            stdio: 'inherit',
+            env: { ...process.env, LANGSYS_MUTATIONS_IN_WORKTREE: '1' },
+        });
+        return r.status ?? 1;
+    } finally {
+        git('-C', root, 'worktree', 'remove', '--force', dir);
+        rmSync(dirname(dir), { recursive: true, force: true });
+    }
+}
+
+if (!process.env.LANGSYS_MUTATIONS_IN_WORKTREE) process.exit(runInWorktree());
 
 const originals = new Map();
 function restoreAll() {

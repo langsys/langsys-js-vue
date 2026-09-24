@@ -44,7 +44,7 @@ Visit [Langsys.dev](https://Langsys.dev/) to create your account, then create yo
 - **Write key** (development): the SDK auto-creates new translation tokens and content blocks as they appear in your app.
 - **Read-only key** (production): the SDK fetches translations only — no token creation, no content-block writes.
 
-**The server decides, not the SDK, and it decides per session.** Authorization returns a `write_enabled` flag that the SDK applies; the same key can come back write-enabled from one IP and read-only from another, so the answer isn't derivable from the key you hold. Read it with [`useWriteEnabled()`](#write-gating), and note that it is *tri-state* — there is a window before authorization lands where the answer is genuinely unknown.
+**The server decides, not the SDK, and it decides per session.** Authorization returns a `write_enabled` flag that the SDK applies; the same key can come back write-enabled from one IP and read-only from another, so the answer isn't derivable from the key you hold. Read it with [`useWriteEnabled()`](#write-gating), and note that it is _tri-state_ — there is a window before authorization lands where the answer is genuinely unknown.
 
 A read-only session isn't necessarily silent: depending on the key's auto-discovery permission the SDK may still report the page URL so the phrases can be picked up server-side. A read-only key with discovery disallowed reports nothing at all. That lane is entirely internal to the base SDK — there is nothing to wire up here.
 
@@ -138,11 +138,11 @@ const writeEnabled = useWriteEnabled();
 
 ### The tri-state is load-bearing
 
-| Value | Meaning |
-|---|---|
-| `undefined` | Authorization hasn't landed yet. **Not** the same as read-only. |
-| `false` | Read-only session. The SDK may report the page URL instead, subject to the key's auto-discovery permission. |
-| `true` | This session registers content directly. |
+| Value       | Meaning                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| `undefined` | Authorization hasn't landed yet. **Not** the same as read-only.                                             |
+| `false`     | Read-only session. The SDK may report the page URL instead, subject to the key's auto-discovery permission. |
+| `true`      | This session registers content directly.                                                                    |
 
 > **Never write `writeEnabled ?? false`, `!writeEnabled`, or `v-if="!writeEnabled"` against this value.** Collapsing `undefined` into `false` tells a write-enabled session it is read-only, and it is unrecoverable without a full reload — nothing re-runs the decision. It also discards tokens: upstream, `undefined` means "hold these misses until we know", so treating it as `false` drops phrases that would have registered a moment later. Branch on all three states, or gate on `writeEnabled === true` and render a neutral state for the rest.
 
@@ -202,13 +202,13 @@ In templates the ref auto-unwraps, so `t(...)` calls the function directly. In s
 The translation function signature is **`t(phrase, category?, params?)`**:
 
 ```typescript
-t('Save');                                       // no category, no params
-t('Save', 'UI');                                 // categorized
-t('Hello, {name}!', { name: 'X' });              // no category, with params
+t('Save'); // no category, no params
+t('Save', 'UI'); // categorized
+t('Hello, {name}!', { name: 'X' }); // no category, with params
 t('Hello, {name}!', 'Greetings', { name: 'X' }); // category + params
 ```
 
-The **phrase itself is the lookup key** *and* the base-language default — there's no separate keys file to maintain. The first render of a phrase registers it in the Translation Manager (when using a write key); from then on, translations are fetched and rendered automatically as locales change.
+The **phrase itself is the lookup key** _and_ the base-language default — there's no separate keys file to maintain. The first render of a phrase registers it in the Translation Manager (when using a write key); from then on, translations are fetched and rendered automatically as locales change.
 
 #### Interpolation
 
@@ -234,14 +234,16 @@ Allowed value types: `string | number | Date | boolean`. Since base SDK 0.3.0, v
 
 #### Categorization disambiguates context
 
-Different categories give the *same* phrase different translations:
+Different categories give the _same_ phrase different translations:
 
 ```vue
-<strong>{{ t('Home', 'Main Menu') }}</strong>     <!-- "Inicio" in Spanish -->
-<strong>{{ t('Home', 'Home repairs') }}</strong>  <!-- "Hogar" in Spanish -->
+<strong>{{ t('Home', 'Main Menu') }}</strong>
+<!-- "Inicio" in Spanish -->
+<strong>{{ t('Home', 'Home repairs') }}</strong>
+<!-- "Hogar" in Spanish -->
 ```
 
-Without categorization, "Home" would only have one translation — which can't work for both contexts. Langsys's philosophy is *translate once, use everywhere*; categorize when the same phrase legitimately means different things.
+Without categorization, "Home" would only have one translation — which can't work for both contexts. Langsys's philosophy is _translate once, use everywhere_; categorize when the same phrase legitimately means different things.
 
 A good rule for category names: the module or feature the phrase lives in (`Account`, `Errors`, `Checkout`, `UI`).
 
@@ -264,6 +266,7 @@ import { Translate } from 'langsys-js-vue';
 ```
 
 The component:
+
 - Recursively tokenizes text nodes and translatable attributes: user-visible text (`placeholder`, `alt`, `title`, `label`), the ARIA strings a screen reader speaks (`aria-label`, `aria-placeholder`, `aria-description`, `aria-valuetext`, `aria-roledescription`) — worth knowing these exist, since an untranslated `aria-label` has no visible symptom and won't be caught by looking at the page — and form validation messages (`data-error`, `data-error-message`, `data-validation-message`, `data-invalid-message`, `data-required-message`, `data-pattern-message`). Those come from `TRANSLATABLE_ATTRIBUTES` in `langsys-js-typescript`, which grows over time — treat the list as illustrative, not exhaustive.
 - Translates `value` only where it is a label rather than data: on `<button>`, and on `<input type="submit">` / `<input type="button">`. Every other input type is left alone, so a text field's value is never rewritten. This is a separate mechanism from the attribute list above (`VALUE_TRANSLATABLE_ELEMENTS` / `VALUE_TRANSLATABLE_INPUT_TYPES`) — `value` does **not** appear in `TRANSLATABLE_ATTRIBUTES`.
 - Translates `<option>` text.
@@ -290,7 +293,7 @@ The component:
 </Translate>
 ```
 
-Why `%name%`: the base SDK normalizes `%name%` back to canonical `{name}` at capture time, so **translators still only ever see `{name}`** and both spellings register the same content block. A single `{name}` actually works in Vue markup (Vue only consumes `{{ }}`, not single braces) — but `%name%` is the portable form the React/Svelte bindings require too, and it avoids the `{{ }}` collision entirely. Only identifiers between the percents match (`%[A-Za-z_][A-Za-z0-9_]*%`), so literal `%` in prose ("50% off", "width: 100%") is left untouched. To keep a *literal* `%WORD%` (e.g. a Windows env var like `%PATH%` in docs text), wrap it in `<DontTranslate>`. The `params` prop is reactive — a changed `count` re-renders via the base SDK's `setParams()`. Placeholders inside `$t()` stay single-brace `{name}` (they live in a JS string, no collision).
+Why `%name%`: the base SDK normalizes `%name%` back to canonical `{name}` at capture time, so **translators still only ever see `{name}`** and both spellings register the same content block. A single `{name}` actually works in Vue markup (Vue only consumes `{{ }}`, not single braces) — but `%name%` is the portable form the React/Svelte bindings require too, and it avoids the `{{ }}` collision entirely. Only identifiers between the percents match (`%[A-Za-z_][A-Za-z0-9_]*%`), so literal `%` in prose ("50% off", "width: 100%") is left untouched. To keep a _literal_ `%WORD%` (e.g. a Windows env var like `%PATH%` in docs text), wrap it in `<DontTranslate>`. The `params` prop is reactive — a changed `count` re-renders via the base SDK's `setParams()`. Placeholders inside `$t()` stay single-brace `{name}` (they live in a JS string, no collision).
 
 **Debug mode catches the `{{ name }}` mistake.** The trap in Vue is reaching for the interpolation you use everywhere else:
 
@@ -309,7 +312,7 @@ If you wrote {name} or {{ name }} in markup, your framework's template compiler
 substituted it before Langsys saw the text — write %name% instead.
 ```
 
-The check fires for `<Translate>` and `<Phrase>`, treats ICU slots (`{n, plural, …}`) as legitimate, re-runs only when the params *key set* changes (a ticking count won't spam), and is silent in production. Note the warning names both brace spellings because it's shared across bindings — in Vue only `{{ }}` is eaten; a single `{name}` survives and works, so it never trips this warning.
+The check fires for `<Translate>` and `<Phrase>`, treats ICU slots (`{n, plural, …}`) as legitimate, re-runs only when the params _key set_ changes (a ticking count won't spam), and is silent in production. Note the warning names both brace spellings because it's shared across bindings — in Vue only `{{ }}` is eaten; a single `{name}` survives and works, so it never trips this warning.
 
 `<Translate>` props: `category?`, `custom_id?`, `label?`, `tag?` (defaults to `translate`), `params?`. `class` and other attributes fall through to the host element.
 
@@ -323,9 +326,7 @@ import { Phrase } from 'langsys-js-vue';
 </script>
 
 <template>
-    <Phrase category="ProductCard" :params="{ n: reviewCount }">
-        Based on %n% <strong>reviews</strong>
-    </Phrase>
+    <Phrase category="ProductCard" :params="{ n: reviewCount }"> Based on %n% <strong>reviews</strong> </Phrase>
 </template>
 ```
 
@@ -340,29 +341,99 @@ The inline elements never reach the translator — they're replaced with neutral
 Marks content that must be preserved verbatim (brand names, domains, code):
 
 ```vue
-Built with <DontTranslate>Kangen®</DontTranslate> on <DontTranslate>langsys.dev</DontTranslate>
+Built with
+<DontTranslate>Kangen®</DontTranslate>
+on
+<DontTranslate>langsys.dev</DontTranslate>
 ```
 
 Renders the host with `translate="no"`, which the base SDK's tokenizer and renderer already honor — the content is never tokenized, registered, or replaced.
 
 `<DontTranslate>` props: `tag?` (defaults to `span`). `class` falls through to the host.
 
+### Already-translated regions — `data-ls-resolved`
+
+When a server has already rendered part of a page in the visitor's locale, mark that region so the SDK does not mistake the translated text for new source phrases:
+
+```vue
+<div data-ls-resolved="es-es">
+    <!-- server-rendered, already in Spanish -->
+    <Translate category="Marketing"><p>{{ serverText }}</p></Translate>
+</div>
+```
+
+`<Translate>` and `<Phrase>` inside a marked element register nothing and report nothing; the nearest marked ancestor decides, so the marker can sit anywhere above them. `data-ls-resolved="false"` on a nearer element opts a region back out. A block keeps its `custom_id` and still translates on a later render — the marker says the text is not source, not that it is untranslatable (that is `<DontTranslate>`).
+
+`useT()` cannot see the marker: a bare `t()` call has no element to walk up from, so text rendered through `useT()` inside a resolved region is still discovered. Render already-translated text in such a region through `<Translate>` or `<Phrase>`.
+
+## Route changes (Vue Router)
+
+A component that stays mounted across a navigation — a header, a nav, a footer, or a child of a route component that Vue Router reuses when only a param changes — does not re-render, so it never records its untranslated phrases against the new page. Wire the router once so every navigation re-enters the SDK:
+
+```ts
+import { createRouter, createWebHistory } from 'vue-router';
+import { syncNavigation } from 'langsys-js-vue';
+
+const router = createRouter({ history: createWebHistory(), routes });
+syncNavigation(router);
+```
+
+`syncNavigation` calls the base SDK's `notifyNavigation()` from `router.afterEach`, once the URL has moved, and skips failed or aborted navigations. It returns the hook's remover. With another router, call `notifyNavigation()` from its after-navigation hook yourself.
+
+## Server messages
+
+Validation errors and system messages a server registers ahead of time arrive as entries — `{ field?, code, message, template, params? }`. Render them with `useServerMessage()`:
+
+```vue
+<script setup lang="ts">
+import { resolveServerMessages, useServerMessage } from 'langsys-js-vue';
+
+const props = defineProps<{ body: unknown }>();
+const render = useServerMessage();
+</script>
+
+<template>
+    <p v-for="entry in resolveServerMessages(body)" :key="entry.code">{{ render(entry) }}</p>
+</template>
+```
+
+`render(entry)` shows the template's translation, filled from `entry.params` (a count param selects its plural branch), when the catalog has one, and the server's own `entry.message` otherwise — no SDK initialized, no catalog loaded, or a template not translated yet. It re-renders on locale and catalog changes. Branch on `entry.code`, never on the text.
+
+`resolveServerMessages(body, { key?, resolver? })` finds the entries wherever they sit in a response body; pass `key` for a known location or `resolver` to map an error format of your own. Templates are looked up under the `messagesCategory` passed to `init()` (default `Errors`), which must match the category the server registers them under; `useServerMessage(category)` overrides it per call.
+
+**Inertia.** A server binding that redirects after a failed form keeps the entries in the session and shares them as a page prop. The destination page renders them the same way — pass the prop to `resolveServerMessages()`:
+
+```vue
+<script setup lang="ts">
+import { resolveServerMessages, useServerMessage } from 'langsys-js-vue';
+
+const props = defineProps<{ errors: unknown }>();
+const render = useServerMessage();
+</script>
+
+<template>
+    <p v-for="entry in resolveServerMessages(props.errors)" :key="entry.code">{{ render(entry) }}</p>
+</template>
+```
+
 ## Composables & reactive primitives
 
-| Export | Type | Notes |
-|---|---|---|
-| `useT()` | `() => Readonly<ShallowRef<TFunction>>` | Updates on translations/locale change. Template: `{{ t('Phrase', 'Cat', params?) }}`; script: `t.value(...)`. |
-| `useCurrentLocale()` | `() => Readonly<ShallowRef<string>>` | The locale whose translations are currently loaded (lags the user-selected locale until the fetch completes). |
-| `useTranslations()` | `() => Readonly<ShallowRef<iCategories>>` | Raw translation catalog. Rarely needed in app code. |
-| `useLocaleStore(initial?)` | `() => { locale, setLocale, store }` | Creates a user-locale `Signal<string>`, reads it reactively, returns a setter. Pass `store` to `init`. |
-| `useWriteEnabled()` | `() => Readonly<ShallowRef<boolean \| undefined>>` | Server-computed write capability. **Tri-state** — `undefined` means "not yet known", never read it as `false`. SSR- and hydration-safe. See [Write gating](#write-gating). |
-| `useSignal(signal)` | `<T>(s: Signal<T>) => Readonly<ShallowRef<T>>` | Low-level: subscribe the current scope to any base-SDK signal. |
-| `createLocaleStore(initial?)` | `(s?: string) => Signal<string>` | Make a user-locale store outside components (module scope). |
-| `refToLocaleSource(ref)` | `(r: Ref<string>) => Signal<string>` | Adapt an existing Vue ref (Pinia, `useState`) into the SDK's locale-store contract. |
-| `refToWriteGrant(ref)` | `(g?: WriteGrantSource) => WriteGrant \| undefined` | Adapt a Vue ref holding a write grant into the provider the SDK reads per request. Applied for you by `init` / `setWriteGrant`. |
-| `setWriteGrant(grant)` | `(g?: WriteGrantSource) => Promise<void>` | Supply or replace the grant after `init()`; re-authorizes and applies the new decision. Also available as `LangsysApp.setWriteGrant`. |
-| `t` / `currentlyLoadedLocale` / `sTranslations` | `Signal<…>` | Raw signals for direct subscription outside Vue. In components, prefer the composables. `writeEnabled` is **not** among them — see [Write gating](#write-gating). |
-| `canonicalizeLocale(locale)` | `(s: string) => string` | Normalize a locale identifier to the canonical **lowercase** wire form (`'en-US'` → `'en-us'`) — the same normalization the SDK applies internally. |
+| Export                                          | Type                                                    | Notes                                                                                                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useT()`                                        | `() => Readonly<ShallowRef<TFunction>>`                 | Updates on translations/locale change. Template: `{{ t('Phrase', 'Cat', params?) }}`; script: `t.value(...)`.                                                              |
+| `useCurrentLocale()`                            | `() => Readonly<ShallowRef<string>>`                    | The locale whose translations are currently loaded (lags the user-selected locale until the fetch completes).                                                              |
+| `useTranslations()`                             | `() => Readonly<ShallowRef<iCategories>>`               | Raw translation catalog. Rarely needed in app code.                                                                                                                        |
+| `useLocaleStore(initial?)`                      | `() => { locale, setLocale, store }`                    | Creates a user-locale `Signal<string>`, reads it reactively, returns a setter. Pass `store` to `init`.                                                                     |
+| `useWriteEnabled()`                             | `() => Readonly<ShallowRef<boolean \| undefined>>`      | Server-computed write capability. **Tri-state** — `undefined` means "not yet known", never read it as `false`. SSR- and hydration-safe. See [Write gating](#write-gating). |
+| `useSignal(signal)`                             | `<T>(s: Signal<T>) => Readonly<ShallowRef<T>>`          | Low-level: subscribe the current scope to any base-SDK signal.                                                                                                             |
+| `createLocaleStore(initial?)`                   | `(s?: string) => Signal<string>`                        | Make a user-locale store outside components (module scope).                                                                                                                |
+| `refToLocaleSource(ref)`                        | `(r: Ref<string>) => Signal<string>`                    | Adapt an existing Vue ref (Pinia, `useState`) into the SDK's locale-store contract.                                                                                        |
+| `refToWriteGrant(ref)`                          | `(g?: WriteGrantSource) => WriteGrant \| undefined`     | Adapt a Vue ref holding a write grant into the provider the SDK reads per request. Applied for you by `init` / `setWriteGrant`.                                            |
+| `useServerMessage(category?)`                   | `() => Readonly<Ref<(entry: ServerMessage) => string>>` | Render server message entries; the template's translation or the server's `message`. See [Server messages](#server-messages).                                              |
+| `syncNavigation(router)`                        | `(r: NavigationSource) => () => void`                   | Re-enter the SDK after every Vue Router navigation. See [Route changes](#route-changes-vue-router).                                                                        |
+| `setWriteGrant(grant)`                          | `(g?: WriteGrantSource) => Promise<void>`               | Supply or replace the grant after `init()`; re-authorizes and applies the new decision. Also available as `LangsysApp.setWriteGrant`.                                      |
+| `t` / `currentlyLoadedLocale` / `sTranslations` | `Signal<…>`                                             | Raw signals for direct subscription outside Vue. In components, prefer the composables. `writeEnabled` is **not** among them — see [Write gating](#write-gating).          |
+| `canonicalizeLocale(locale)`                    | `(s: string) => string`                                 | Normalize a locale identifier to the canonical **lowercase** wire form (`'en-US'` → `'en-us'`) — the same normalization the SDK applies internally.                        |
 
 ## Server-Side Rendering (Nuxt)
 
@@ -377,11 +448,11 @@ The SDK is SSR-compatible. Hand the client the catalog the server rendered with 
 ```typescript
 import { LangsysApp, type iCountryList, type iCurrencyList, type iLocaleDefault } from 'langsys-js-vue';
 
-const countries: iCountryList   = await LangsysApp.getCountries();     // [{ code: "US", label: "United States" }, ...]
-const dialCodes                 = await LangsysApp.getDialCodes();     // [{ country_code: "US", dial_code: "+1", name: "United States" }, ...]
-const currencies: iCurrencyList = await LangsysApp.getCurrencies();    // [{ code: "USD", name: "US Dollar", symbol: "$", ... }, ...]
-const locales: iLocaleDefault   = await LangsysApp.getLocales();       // { "English": [{ code: "en-US", name: "English (US)" }, ...], ... }
-const localeName                = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // "espagnol"
+const countries: iCountryList = await LangsysApp.getCountries(); // [{ code: "US", label: "United States" }, ...]
+const dialCodes = await LangsysApp.getDialCodes(); // [{ country_code: "US", dial_code: "+1", name: "United States" }, ...]
+const currencies: iCurrencyList = await LangsysApp.getCurrencies(); // [{ code: "USD", name: "US Dollar", symbol: "$", ... }, ...]
+const locales: iLocaleDefault = await LangsysApp.getLocales(); // { "English": [{ code: "en-US", name: "English (US)" }, ...], ... }
+const localeName = await LangsysApp.getLocaleNameWithLookup('es-ES', true, 'fr-FR'); // "espagnol"
 ```
 
 `getLocaleName()` (the synchronous variant) only reads an in-memory cache, populated once `await LangsysApp.getLocalesData(inLocale)` — or a `getLocaleNameWithLookup()` call — has settled for that display locale. Called before that, it warns and returns `''`; prefer `getLocaleNameWithLookup()` unless you've already loaded the data.
@@ -403,7 +474,7 @@ const locale = LangsysApp.detectPreferredLocale(acceptLanguage, supportedLocales
 
 The matcher tries exact match first (e.g. `en-us`), then language-only (`en` matches `en-gb`), and is script-aware via CLDR likely-subtags (base SDK 0.3.0+): `zh-TW` matches `zh-Hant` and never falls back to `zh-Hans`. Matching is casing-insensitive on input, and results are always returned in the canonical lowercase form.
 
-**On no match, it does *not* return `false`.** `false` is returned in exactly one case: no user preference could be detected at all (empty `Accept-Language`, no `navigator.languages`). When you pass `supportedLocales` and none of the user's preferences match, it falls back to **the user's own top preference**, canonicalized — an unsupported locale. So this is a trap:
+**On no match, it does _not_ return `false`.** `false` is returned in exactly one case: no user preference could be detected at all (empty `Accept-Language`, no `navigator.languages`). When you pass `supportedLocales` and none of the user's preferences match, it falls back to **the user's own top preference**, canonicalized — an unsupported locale. So this is a trap:
 
 ```typescript
 // WRONG — the || branch only fires when nothing was detected, never on a no-match,

@@ -9,11 +9,10 @@ import { Translate } from './index.js';
  * MARK-1 — a rendered `<Translate>` host carries the identity it was rendered from.
  *
  * The core's DOM class stamps a host's identity when it mounts, and mounting never
- * happens during server rendering. So before this binding stamped anything itself,
- * served HTML carried **no** id on any `<Translate>` host — measured as
- * `<translate><p>Pricing plans</p></translate>` — while the same component mounted on
- * the client carried `data-ls-contentblock="…"`. Two paths over the same markup,
- * disagreeing, which CONF-1's every-path clause does not allow.
+ * happens during server rendering. Left to the core alone, served HTML would carry no id
+ * on any `<Translate>` host while the same component mounted on the client carries
+ * `data-ls-contentblock="…"` — two paths over the same markup disagreeing, which CONF-1's
+ * every-path clause does not allow.
  *
  * An explicit `custom_id` IS the resolved id and is known at render time, so the
  * binding stamps it on every path. A derived id needs the rendered subtree tokenized,
@@ -23,6 +22,10 @@ import { Translate } from './index.js';
  * MARK-1's test asks for two independent paths to one value, because reading back the
  * attribute the renderer just wrote proves only that it was written. Here the second
  * path is the core's vanilla class, run on a plain element with no binding involved.
+ *
+ * `ATTR` is written out here rather than imported: the binding stamps the core's exported
+ * constant, and this file checks the served HTML against the attribute the core's class
+ * actually writes, so a wrong name on either side turns it red.
  */
 
 const ATTR = 'data-ls-contentblock';
@@ -71,8 +74,7 @@ describe('MARK-1 — a served <Translate> host carries its identity', () => {
         const coreName = Object.entries(core).find(([, v]) => v === 'explicit-1')?.[0];
 
         expect(coreName, 'the core stamped no attribute carrying the explicit id').toBeDefined();
-        // The literal cross-check: the core does not export its marker constant, so this
-        // binding duplicates it. If the core ever renames the attribute, this goes red.
+        // The name the binding stamps must be the name the core's own class writes.
         expect(coreName).toBe(ATTR);
         expect(html).toContain(`${coreName}="${core[coreName as string]}"`);
     });

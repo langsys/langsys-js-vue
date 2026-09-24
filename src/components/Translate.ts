@@ -1,18 +1,6 @@
 import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { PropType } from 'vue';
-import { Translate as VanillaTranslate, type ParamPrimitive } from 'langsys-js-typescript';
-
-/**
- * The host attribute carrying a content block's identity (MARK-1).
- *
- * Duplicated here as a literal because the core does not export it from its main
- * entry: it exports `PHRASE_MARKER_ATTR` but keeps `CONTENT_BLOCK_MARKER_ATTR`
- * internal (`identity.ts`). A literal can drift from the core silently, so
- * `src/marker-ssr.test.ts` checks it against the attribute the core itself stamps —
- * if the core renames it, that test goes red. Replace with the import once the core
- * exports the constant.
- */
-const CONTENT_BLOCK_MARKER_ATTR = 'data-ls-contentblock';
+import { CONTENT_BLOCK_MARKER_ATTR, Translate as VanillaTranslate, type ParamPrimitive } from 'langsys-js-typescript';
 
 /**
  * Props for the Vue `Translate` component. Mirrors the React/Svelte components

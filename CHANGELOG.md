@@ -4,6 +4,12 @@
 
 ### Added
 
+- **`syncNavigation(router)` — route changes reach components that stay mounted.** A header, nav or footer that survives a navigation, or a child of a route component Vue Router reuses when only a param changes, does not re-render, so its untranslated phrases were never recorded against the new page. `syncNavigation` calls the base SDK's `notifyNavigation()` from `router.afterEach` once the URL has moved, and every `useT()` consumer, `<Translate>` and `<Phrase>` re-enters. `notifyNavigation` is re-exported for other routers.
+
+- **`useServerMessage()` — render server message entries.** Validation errors and system messages arrive as `{ field?, code, message, template, params? }` entries. `render(entry)` shows the template's translation, filled from its params, when the catalog has one, and the server's own `message` otherwise; it re-renders on locale and catalog changes. The decision is the base SDK's `renderServerMessage()`, re-exported with `resolveServerMessages()`, which finds entries anywhere in a response body — including an Inertia page prop.
+
+- **`data-ls-resolved` is honoured through `<Translate>` and `<Phrase>`.** Both hand the base SDK their host in the page, so text under an element marked as already rendered in the visitor's locale is not registered as new source. `useT()` has no element and cannot see the marker; the README says so.
+
 - **`<Translate>` with an explicit `custom_id` now carries its identity in server-rendered HTML.** The base SDK stamps `data-ls-contentblock` on a host when its DOM class mounts, and mounting never happens during server rendering — so served HTML carried no id on any `<Translate>` host, while the same component carried one after the client mounted it. An explicit `custom_id` *is* the resolved id and is known at render time, so it is now stamped on both paths, and the served host agrees with the mounted one (no hydration mismatch). A block with a **derived** id still has no id in served HTML: deriving it means tokenizing the rendered subtree, which only happens on mount or in a server SDK.
 
 - **`useWriteEnabled()` — whether the current session may register content, as decided by the server.** Returns `Readonly<ShallowRef<boolean | undefined>>`, and the tri-state is load-bearing: `undefined` means authorization hasn't landed yet, `false` means a genuinely read-only session, `true` means writes go direct. The same key can be write-enabled from one IP and read-only from another, so the answer is not derivable client-side.
@@ -23,6 +29,8 @@
 - **Types `WriteGrant` and `WriteGrantSource`** re-exported, so consumers typing their own grant plumbing don't have to reach into `langsys-js-typescript`.
 
 ### Changed
+
+- **`<Translate>` stamps its explicit `custom_id` with the base SDK's exported `CONTENT_BLOCK_MARKER_ATTR`** instead of a local copy of the attribute name.
 
 - **`LangsysApp` is now a `Proxy` over the base SDK singleton rather than a hand-written wrapper class.** It forwards every core member **by reference** and overrides exactly two — `init` and `setWriteGrant`, the only two that adapt Vue shapes. Non-breaking: `LangsysApp.getCountries()` and every other call keep working, and now resolve to the core's own function rather than a copy of it.
 

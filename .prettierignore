@@ -13,3 +13,7 @@ yarn.lock
 
 # Generated
 CHANGELOG.md
+
+# Vendored byte-exact from langsys-js-typescript; cited by tree id
+contract-fixture/
+test/fixtures/server-message-vectors.json

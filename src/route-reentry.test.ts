@@ -288,10 +288,10 @@ describe.each([
      * The measured limitation, pinned so it cannot regress silently in either
      * direction. A component outside `<RouterView>` is not re-rendered on
      * navigation — none of its reactive dependencies changed — so its misses are
-     * attributed only to the URL present at first render. Spec 8.0.1 files this
-     * shape under HINT-4 as a known non-capture, closed by the navigation entry
-     * point rather than by a binding-side memo. If it ever starts re-entering,
-     * this test fails and the conformance row needs revisiting.
+     * attributed only to the URL present at first render. This file measures Vue
+     * with no navigation hook; `syncNavigation(router)` closes the gap by calling
+     * the core's `notifyNavigation()`, proven in `navigation-contract.test.ts`
+     * (HINT-13). If Vue itself ever starts re-entering here, this test fails.
      */
     it('does NOT re-enter t() for a persistent layout outside <RouterView> (HINT-4 non-capture)', async () => {
         const app = await mount(keepAlive);

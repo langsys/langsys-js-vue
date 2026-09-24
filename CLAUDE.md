@@ -15,6 +15,8 @@ src/
     index.ts                  # public exports — LangsysApp wrapper, composables, components, raw signals, type re-exports
     adapters.ts               # useSignal (Signal → shallowRef), createLocaleStore, refToLocaleSource (Ref → Signal), refToWriteGrant (Ref → provider)
     composables.ts            # useT / useCurrentLocale / useTranslations / useLocaleStore / useWriteEnabled
+    navigation.ts             # syncNavigation(router) — Vue Router afterEach → core notifyNavigation() (HINT-13)
+    server-message.ts         # useServerMessage() — reactive wrapper over core renderServerMessage() (MSG-5)
     components/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
         Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
@@ -33,7 +35,13 @@ src/
     hydration-handoff.test.ts # SRV-4: synchronous seed before mount vs an unseeded control
     hydration-handoff-init.test.ts # SRV-4: init() seeds only after its round trip (own process)
     api-redirect.test.ts      # WIRE-5: apiUrl through the init override reaches a double (own process)
-_dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable (npm run test:mutations)
+    navigation-contract.test.ts # HINT-13 against the contract double: layout, KeepAlive, param reuse (own process)
+    resolved-contract.test.ts # GATE-10 against the contract double: data-ls-resolved through each wrapper (own process)
+    server-message.test.ts    # MSG-5 shared render vectors through a mounted component; MSG-12 page half
+test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
+test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
+contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
+_dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a temporary worktree (npm run test:mutations)
 example/                      # Vite playground (npm run dev) — not published
 ```
 
@@ -87,6 +95,12 @@ t, currentlyLoadedLocale, sTranslations  // raw Signals; prefer the composables 
 createSignal                  // re-exported generic Signal factory
 canonicalizeLocale(locale)    // re-exported locale normalizer; canonical form is LOWERCASE 'en-us' (WIRE-3)
 
+// Route changes (HINT-13) and server messages (MSG-5)
+syncNavigation(router)        // Vue Router afterEach → notifyNavigation(); returns the remover
+notifyNavigation()            // the core entry point, for any other router
+useServerMessage(category?)   -> Readonly<Ref<(entry: ServerMessage) => string>>  // core renderServerMessage, reactive
+resolveServerMessages(body, { key?, resolver? }), renderServerMessage(entry, category?)  // core, re-exported
+
 // Components
 <Translate category? custom_id? label? tag? />       // class falls through
 <Phrase category? params? tag? />
@@ -111,7 +125,7 @@ WriteGrantSource (the Vue-flavored one — WriteGrant | Ref<string | null | unde
 - `npm run typecheck` — `tsc --noEmit`. Should be clean before any commit. CI runs it.
 - `npm run build` — `tsup` → builds ESM + CJS + `.d.ts` to `dist/`.
 - `npm run test` — Vitest (`vitest run`), node environment by default; DOM suites opt into jsdom per file.
-- `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale.
+- `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. It runs in a temporary git worktree (HEAD plus the checkout's uncommitted changes, `node_modules` linked) and never writes to the checkout. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale — including after Prettier rewraps a targeted line.
 - `npm run lint` / `npm run format` — Prettier + ESLint (flat config in `eslint.config.mjs`). Not run in CI.
 
 Note: the Vite/Vitest configs use the `.mts` extension (`vite.config.mts`, `vitest.config.mts`) so they load as ESM on Node versions without `require(esm)` support.
@@ -166,14 +180,18 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Never collapse `writeEnabled`'s tri-state.** `undefined` means "the server hasn't answered yet", not "read-only". Defaulting it to `false` tells a write-enabled session it can't write, which is unrecoverable without a reload, and upstream it converts "hold these misses" into "drop them". This applies to our own code as much as to consumers' — don't add a `?? false` anywhere in the read path.
 - **`useWriteEnabled`'s hydration latch must stay a macrotask.** `setTimeout(0)`, not `nextTick()` / `queueMicrotask` / `Promise.resolve()`. A microtask drains inside the same hydration pass, so it reintroduces the mismatch. `src/composables.test.ts` pins this with a test that fails on a microtask latch.
 - **Keep `refToWriteGrant` lazy and non-subscribing.** It must return a provider that reads on every call. Snapshotting the ref produces a grant that can never refresh — and since grants are short-lived, that passes every test that doesn't specifically check for it and then expires in production.
-- **A served `<Translate>` host carries its explicit `custom_id`, and the DOM class re-creates after Vue patches.** The core stamps `data-ls-contentblock` only on mount, which never happens during SSR, so the binding stamps an explicit id in `h()`. The attribute name is a literal because the core does not export `CONTENT_BLOCK_MARKER_ATTR`; `marker-ssr.test.ts` cross-checks it against the core's own stamp. Keep the re-create watcher on `flush: 'post'`: pre-flush, switching explicit→derived let Vue's patch remove the stamp the core had just written.
+- **A served `<Translate>` host carries its explicit `custom_id`, and the DOM class re-creates after Vue patches.** The core stamps `data-ls-contentblock` only on mount, which never happens during SSR, so the binding stamps an explicit id in `h()` with the core's exported `CONTENT_BLOCK_MARKER_ATTR`; `marker-ssr.test.ts` checks the served attribute against the one the core's class writes. Keep the re-create watcher on `flush: 'post'`: pre-flush, switching explicit→derived let Vue's patch remove the stamp the core had just written.
 - **The SSR hand-off is `seedCatalog()` — synchronous, on both sides, before anything renders.** `init({ initialTranslations })` applies its catalog only after an authorization round trip, so it can never seed the first client render. And the server-side seed is process-global: concurrent renders in different locales leak into each other. Do not document server-rendered translation as safe under mixed-locale concurrency.
+- **Components hand the core the host that is in the page.** The core's GATE-10 reader walks ancestors from the element it is given to find `data-ls-resolved`; a detached or cloned element finds nothing and registers already-translated text (M24, M25).
+- **`syncNavigation` only times the core's `notifyNavigation()`.** It decides nothing else (BIND-1). Keep it on `afterEach`, after the URL has moved; a call before the move records misses at the old URL.
+- **`useServerMessage` never reads the catalog itself.** The fallback decision is the core's `renderServerMessage()`; the composable only adds the dependency on `useT()` so a mounted list re-renders. Never pass `entry.message` as a key.
+- **`contract-fixture/` and `test/fixtures/server-message-vectors.json` are vendored byte-exact.** Never edit or reformat them (both are in `.prettierignore`); refresh by copying from the core at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads.
 
 ## Testing approach
 
-Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. DOM-level suites run under jsdom per file: `rendered.test.ts` and `route-reentry.test.ts` (real `vue-router`, including `<KeepAlive>` and param-only navigation), `marker-ssr.test.ts` (served HTML vs the core's own stamp on a plain element), and the SRV-4 hydration pair, which hydrates real server output and captures Vue's own mismatch warnings. Any case that calls `init()` gets its own file, because a second `init()` in one process is a no-op and would let the case pass without init running. The live reactive path is also exercised by the `example/` playground.
+Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. DOM-level suites run under jsdom per file: `rendered.test.ts` and `route-reentry.test.ts` (real `vue-router`, including `<KeepAlive>` and param-only navigation), `marker-ssr.test.ts` (served HTML vs the core's own stamp on a plain element), and the SRV-4 hydration pair, which hydrates real server output and captures Vue's own mismatch warnings. Any case that calls `init()` gets its own file, because a second `init()` in one process is a no-op and would let the case pass without init running. The contract suites (`navigation-contract`, `resolved-contract`) start the vendored contract double and assert on its accepted state; each absence there is paired with a presence the double stored in the same file, from a session the double accepts the action from. The live reactive path is also exercised by the `example/` playground.
 
 **A route re-entry verdict counts only behind two controls.** Every case in `route-reentry.test.ts` first asserts that the URL moved to the new route and that a component inside `<RouterView>` re-entered `t()` at that URL; the fake `t()` records `window.location.href` per call for exactly this. Without them, a memory history (the URL never moves, so a correct re-entry captures the old URL) or a read before `router.push()` settles (nothing has re-rendered) turns a correct binding into "does not re-enter". Keep a history that moves `window.location`, keep the settle, and keep M22 and M23 red.
 
