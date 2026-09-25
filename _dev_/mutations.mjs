@@ -412,6 +412,47 @@ export const MUTATIONS = [
         ],
         check: vitest('src/server-message.test.ts'),
     },
+    {
+        id: 'M30',
+        rules: 'MIG-1..8 (pass-through)',
+        what: "the init override drops the app's legacyKeys on the way to the core",
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: 'writeGrant: refToWriteGrant(config.writeGrant),',
+                replace: 'writeGrant: refToWriteGrant(config.writeGrant),\n            legacyKeys: undefined,',
+            },
+        ],
+        check: vitest('src/legacy-keys-passthrough.test.ts'),
+    },
+    {
+        id: 'M31',
+        rules: 'MIG-7 (pass-through)',
+        what: "the init override strips each legacy file's format, so every file reads as plain",
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: 'writeGrant: refToWriteGrant(config.writeGrant),',
+                replace:
+                    'writeGrant: refToWriteGrant(config.writeGrant),\n            legacyKeys: config.legacyKeys?.map(({ format: _f, ...f }) => f),',
+            },
+        ],
+        check: vitest('src/legacy-keys-passthrough.test.ts'),
+    },
+    {
+        id: 'M32',
+        rules: 'SNAP-2, SNAP-3 (pass-through)',
+        what: "the proxy hides the core's loadSnapshot",
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: 'const value = Reflect.get(target, prop, target);',
+                replace:
+                    "if (prop === 'loadSnapshot') return undefined;\n        const value = Reflect.get(target, prop, target);",
+            },
+        ],
+        check: vitest('src/snapshot-passthrough.test.ts'),
+    },
 ];
 
 /**
