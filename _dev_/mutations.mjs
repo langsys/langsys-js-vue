@@ -122,9 +122,10 @@ export const MUTATIONS = [
         file: 'src/composables.ts',
         edits: [
             {
-                find: '    return useSignal(tSignal);',
+                find: '    return scope ? shallowRef(scope.t) : useSignal(tSignal);',
                 replace: [
                     '    const memo: Map<string, string> = ((globalThis as Record<string, unknown>).__lsMutationMemo ??= new Map()) as Map<string, string>;',
+                    '    void scope;',
                     '    const inner = useSignal(tSignal);',
                     '    const cached = ((phrase: string, ...rest: unknown[]) => {',
                     '        if (!memo.has(phrase)) memo.set(phrase, (inner.value as unknown as (...a: unknown[]) => string)(phrase, ...rest));',
@@ -452,6 +453,75 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/snapshot-passthrough.test.ts'),
+    },
+    {
+        id: 'M33',
+        rules: 'SRV-2 (subscription leak)',
+        what: 'useSignal subscribes during a server render again, so every request leaves listeners on the core signals',
+        file: 'src/adapters.ts',
+        edits: [{ find: "    if (typeof window === 'undefined') return value;\n", replace: '' }],
+        check: vitest('src/ssr-subscriptions.test.ts'),
+    },
+    {
+        id: 'M34',
+        rules: 'SRV-7 (the spec mutation)',
+        what: 'the harness renders every request through one shared request scope',
+        file: 'src/ssr-scope.test.ts',
+        edits: [
+            {
+                find: 'open: (locale, catalog) => createRequestScope({ locale, catalog: catalog as never }),',
+                replace:
+                    'open: (locale, catalog) => ((globalThis as Record<string, unknown>).__lsOneScope ??= createRequestScope({ locale, catalog: catalog as never })),',
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M35',
+        rules: 'SRV-7, SRV-3 (the Nuxt path)',
+        what: 'the composables ignore a scope provided to the app and read only the async context',
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: 'return provided ?? currentRequestScope() ?? null;',
+                replace: 'void provided;\n    return currentRequestScope() ?? null;',
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts', 'src/ssr-scope-contract.test.ts'),
+    },
+    {
+        id: 'M36',
+        rules: 'SRV-2',
+        what: "useCurrentLocale reads the process-wide signal on the server, not the request's scope",
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: 'return scope ? shallowRef(scope.locale) : useSignal(currentlyLoadedLocale);',
+                replace: 'void scope;\n    return useSignal(currentlyLoadedLocale);',
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M37',
+        rules: 'SRV-7 (the enter() wiring trap)',
+        what: "the request's scope.enter() moves into a helper the request awaits, so the render never sees the scope",
+        file: 'src/ssr-scope.test.ts',
+        edits: [
+            {
+                find: [
+                    '            const scope = await createRequestScope({ locale, catalog: CATALOGS[locale] as never });',
+                    '            scope.enter();',
+                ].join('\n'),
+                replace: [
+                    '            await (async function helper() {',
+                    '                const scope = await createRequestScope({ locale, catalog: CATALOGS[locale] as never });',
+                    '                scope.enter();',
+                    '            })();',
+                ].join('\n'),
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts'),
     },
 ];
 

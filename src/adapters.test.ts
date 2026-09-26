@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, customRef, effectScope, isRef, ref, shallowRef } from 'vue';
 import { createSignal } from 'langsys-js-typescript';
 import { createLocaleStore, refToLocaleSource, refToWriteGrant, useSignal } from './adapters.js';
@@ -41,6 +41,10 @@ describe('createLocaleStore', () => {
 });
 
 describe('useSignal', () => {
+    // A browser: the composable subscribes. The server case, with no window, is below.
+    beforeEach(() => void ((globalThis as { window?: unknown }).window = {}));
+    afterEach(() => void delete (globalThis as { window?: unknown }).window);
+
     it('seeds synchronously and tracks signal changes', () => {
         const signal = createSignal('a');
         const scope = effectScope();
@@ -67,6 +71,15 @@ describe('useSignal', () => {
         const value = useSignal(signal);
         signal.set(2);
         expect(value.value).toBe(2);
+    });
+
+    it('on the server (no window) reads once and never subscribes', () => {
+        delete (globalThis as { window?: unknown }).window;
+        const signal = createSignal(1);
+        const subscribe = vi.spyOn(signal, 'subscribe');
+        const value = useSignal(signal);
+        expect(value.value).toBe(1);
+        expect(subscribe).not.toHaveBeenCalled();
     });
 });
 

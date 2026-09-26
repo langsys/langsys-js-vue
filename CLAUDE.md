@@ -17,6 +17,7 @@ src/
     composables.ts            # useT / useCurrentLocale / useTranslations / useLocaleStore / useWriteEnabled
     navigation.ts             # syncNavigation(router) — Vue Router afterEach → core notifyNavigation() (HINT-13)
     server-message.ts         # useServerMessage() — reactive wrapper over core renderServerMessage() (MSG-5)
+    server.ts                 # `langsys-js-vue/server` (server-only entry): request scopes for SSR (SRV-7)
     components/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
         Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
@@ -38,6 +39,11 @@ src/
     navigation-contract.test.ts # HINT-13 against the contract double: layout, KeepAlive, param reuse (own process)
     resolved-contract.test.ts # GATE-10 against the contract double: data-ls-resolved through each wrapper (own process)
     server-message.test.ts    # MSG-5 shared render vectors through a mounted component; MSG-12 page half
+    legacy-keys-passthrough.test.ts # MIG: legacyKeys reach the core through the init override (own process)
+    snapshot-passthrough.test.ts # SNAP-2/3: loadSnapshot forwarded; refusals reach the caller
+    ssr-scope.test.ts         # SRV-7/SRV-2: request scopes — run, provide (Nuxt), enter; the enter-in-plugin hazard
+    ssr-scope-contract.test.ts # SRV-1/SRV-3 through a scope against the contract double (own process)
+    ssr-subscriptions.test.ts # server renders leave no subscription on the core's signals
 test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
 contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
@@ -100,6 +106,12 @@ syncNavigation(router)        // Vue Router afterEach → notifyNavigation(); re
 notifyNavigation()            // the core entry point, for any other router
 useServerMessage(category?)   -> Readonly<Ref<(entry: ServerMessage) => string>>  // core renderServerMessage, reactive
 resolveServerMessages(body, { key } | { resolver }, pieces?), renderServerMessage(entry, category?)  // core, re-exported; resolve throws with neither
+
+// Server rendering — `langsys-js-vue/server` (server-only entry, imports node:async_hooks)
+provideRequestScope(app, scope)          // Nuxt: hand the request's scope to its Vue app (per-app injection)
+renderInRequestScope(options, render)    // plain Vite SSR: open a scope, render inside scope.run
+installRequestScopes()                   // give the core an AsyncLocalStorage (idempotent)
+createRequestScope, currentRequestScope, setRequestScopeStorage, clearSharedCatalogs  // core, re-exported
 
 // Components
 <Translate category? custom_id? label? tag? />       // class falls through
@@ -184,6 +196,9 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **The SSR hand-off is `seedCatalog()` — synchronous, on both sides, before anything renders.** `init({ initialTranslations })` applies its catalog only after an authorization round trip, so it can never seed the first client render. And the server-side seed is process-global: concurrent renders in different locales leak into each other. Do not document server-rendered translation as safe under mixed-locale concurrency.
 - **Components hand the core the host that is in the page.** The core's GATE-10 reader walks ancestors from the element it is given to find `data-ls-resolved`; a detached or cloned element finds nothing and registers already-translated text (M24, M25).
 - **`syncNavigation` only times the core's `notifyNavigation()`.** It decides nothing else (BIND-1). Keep it on `afterEach`, after the URL has moved; a call before the move records misses at the old URL.
+- **On the server, composables never subscribe.** Vue's server renderer never stops a component's effect scope, so a subscription made during a server render is never released; `useSignal` reads once when there is no `window` (`ssr-subscriptions.test.ts`, M33).
+- **On the server, `useT`, `useCurrentLocale` and `useTranslations` read the request scope.** The scope provided to the app first (the Nuxt path, which has no async context), then the one current in the async context. Without the provided-scope read, a Nuxt render would fall back to process state, which is another visitor's (M35, M36). `REQUEST_SCOPE_KEY` is `Symbol.for(...)` because the main and server entries are separate bundles.
+- **Call `scope.enter()` only in the function that renders, never in an async function the renderer awaits** — a helper, or a Nuxt plugin. Entered there, it does not reach the render: interleaved Italian and German requests serve the Italian one German (`ssr-scope.test.ts`, the pinned hazard; M37 moves a working `enter()` into a helper and turns red). Nuxt uses `provideRequestScope`.
 - **`useServerMessage` never reads the catalog itself.** The fallback decision is the core's `renderServerMessage()`; the composable only adds the dependency on `useT()` so a mounted list re-renders. Never pass `entry.message` as a key.
 - **`contract-fixture/` and `test/fixtures/server-message-vectors.json` are vendored byte-exact.** Never edit or reformat them (both are in `.prettierignore`); refresh by copying from the core at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).

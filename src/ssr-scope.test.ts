@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import * as vue from 'vue';
 import { createSSRApp, defineComponent, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { LangsysApp, useT } from './index.js';
+import { currentlyLoadedLocale, sTranslations } from 'langsys-js-typescript';
+import { useCurrentLocale, useTranslations } from './index.js';
+import { createRequestScope, installRequestScopes, provideRequestScope, type RequestScope } from './server.js';
 
 /**
  * SRV-7 (and SRV-2) — server renders for different visitors must not share translation state.
@@ -11,16 +15,19 @@ import { LangsysApp, useT } from './index.js';
  * renders each carry only their own locale; rendering both through one shared scope turns the
  * first case red.
  *
- * The request scope is the core's (SRV-7), and it does not exist yet. So this file is written
- * against a small seam interface, with one adapter per way of isolating a render:
+ * The request scope is the core's (SRV-7). This file is written against a small seam interface,
+ * with one adapter per way of isolating a render:
  *
  * - `processGlobal` — what this binding can do today: seed the core's process-wide catalog
  *   before each render. The measured state is pinned below: sequential renders are right,
  *   concurrent ones leak.
  * - `sharedScope` — the spec's mutation, one scope for every render. It must fail the
  *   sequential case, which is what proves that case can fail.
- * - `coreScope` — the core's request scope. `null` until the core ships it; filling in this one
- *   adapter turns on the conformance cases.
+ * - `coreScope` — the core's request scope, a real scope per request rendered inside
+ *   `scope.run`, as plain Vite SSR renders through `renderInRequestScope`.
+ *
+ * The last block renders the way a Nuxt server plugin does. The plugin cannot wrap the render,
+ * so it provides the request's scope to that request's own Vue app (`provideRequestScope`).
  */
 
 interface Seam {
@@ -61,14 +68,33 @@ function sharedScope(): Seam {
     };
 }
 
-/** The core's request scope (SRV-7). Set this adapter when the core ships the seam. */
-const coreScope: Seam | null = null;
+/** The core's request scope (SRV-7): a real scope per request, rendered inside `scope.run`. */
+installRequestScopes();
+const coreScope: Seam | null = {
+    open: (locale, catalog) => createRequestScope({ locale, catalog: catalog as never }),
+    async render(scope, app) {
+        const opened = await (scope as Promise<RequestScope>);
+        return opened.run(() => renderToString(createSSRApp(app)));
+    },
+    close(scope) {
+        void (scope as Promise<RequestScope>).then((opened) => opened.close());
+    },
+};
 
-/** A page whose render suspends once, so two concurrent requests interleave across the await. */
+/**
+ * A page whose render suspends once, so two concurrent requests interleave across the await. The
+ * await goes through `withAsyncContext`, which is what the compiler emits for a top-level
+ * `await` in `<script setup>`: it restores the component instance afterwards, as in a real page.
+ */
+/** The compiler helper `<script setup>` emits for a top-level await; exported by Vue, not declared in its types. */
+const withAsyncContext = (vue as unknown as { withAsyncContext<T>(fn: () => T): [T, () => void] }).withAsyncContext;
+
 function page(gate: Promise<void>) {
     return defineComponent({
         async setup() {
-            await gate;
+            const [waiting, restore] = withAsyncContext(() => gate);
+            await waiting;
+            restore();
             const t = useT();
             return () => h('h1', t.value('Pricing', 'UI') as string);
         },
@@ -142,5 +168,139 @@ describe.skipIf(coreScope === null)("SRV-7 — the core's request scope", () => 
         expect(it).not.toContain(EXPECTED.de);
         expect(de).toContain(EXPECTED.de);
         expect(de).not.toContain(EXPECTED.it);
+    });
+});
+
+describe('SRV-7 — Nuxt-shaped: the plugin cannot wrap the render', () => {
+    /** A request whose awaited "plugin" opens the scope before the app renders, as Nuxt awaits its plugins. */
+    async function request(
+        locale: string,
+        wait: Promise<void>,
+        hand: 'provide' | 'enter-in-plugin' | 'enter-in-request'
+    ) {
+        await null; // the request handler's own async context
+        const app = createSSRApp(page(wait));
+        if (hand === 'enter-in-request') {
+            const scope = await createRequestScope({ locale, catalog: CATALOGS[locale] as never });
+            scope.enter();
+        } else {
+            await (async function plugin() {
+                const scope = await createRequestScope({ locale, catalog: CATALOGS[locale] as never });
+                if (hand === 'provide') provideRequestScope(app, scope);
+                else scope.enter();
+            })();
+        }
+        return renderToString(app);
+    }
+    async function interleaved(hand: Parameters<typeof request>[2]) {
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const itRequest = request('it', gate, hand);
+        const de = await request('de', Promise.resolve(), hand);
+        release();
+        return { it: await itRequest, de };
+    }
+
+    it('provideRequestScope from the plugin: interleaved requests each render only their own locale', async () => {
+        const { it, de } = await interleaved('provide');
+        expect(it).toContain(EXPECTED.it);
+        expect(it).not.toContain(EXPECTED.de);
+        expect(de).toContain(EXPECTED.de);
+        expect(de).not.toContain(EXPECTED.it);
+    });
+
+    it("scope.enter() in the request's own async function isolates interleaved requests too", async () => {
+        const { it, de } = await interleaved('enter-in-request');
+        expect(it).toContain(EXPECTED.it);
+        expect(de).toContain(EXPECTED.de);
+    });
+
+    /**
+     * Measured hazard, pinned: `enter()` called inside an awaited async function that first
+     * awaited `createRequestScope` — the shape of a Nuxt plugin — does not isolate the request:
+     * the Italian request serves German. This is why the Nuxt path provides the scope instead.
+     */
+    it('hazard, pinned: scope.enter() inside an awaited plugin serves the Italian request German', async () => {
+        const { it } = await interleaved('enter-in-plugin');
+        expect(it).not.toContain(EXPECTED.it);
+    });
+});
+
+describe('SRV-2 — what follows the scope on the server', () => {
+    it("the composables read the scope, not the process-wide catalog another visitor's request left", async () => {
+        seed(CATALOGS.de, 'de'); // the process-wide state, from another request
+        const Probe = defineComponent({
+            setup() {
+                const t = useT();
+                const locale = useCurrentLocale();
+                const catalog = useTranslations();
+                return () =>
+                    h(
+                        'p',
+                        `${t.value('Pricing', 'UI') as string}|${locale.value}|${(catalog.value as Record<string, Record<string, string>>).UI?.Pricing}`
+                    );
+            },
+        });
+        const scope = await createRequestScope({ locale: 'it', catalog: CATALOGS.it as never });
+        const html = await scope.run(() => renderToString(createSSRApp(Probe)));
+        expect(html).toBe('<p>Prezzi|it|Prezzi</p>');
+    });
+
+    it('a scope provided to the app (the Nuxt path) is what the composables read, with no async context', async () => {
+        seed(CATALOGS.de, 'de');
+        const Probe = defineComponent({
+            setup() {
+                const t = useT();
+                const locale = useCurrentLocale();
+                const catalog = useTranslations();
+                return () =>
+                    h(
+                        'p',
+                        `${t.value('Pricing', 'UI') as string}|${locale.value}|${(catalog.value as Record<string, Record<string, string>>).UI?.Pricing}`
+                    );
+            },
+        });
+        const scope = await createRequestScope({ locale: 'it', catalog: CATALOGS.it as never });
+        const app = createSSRApp(Probe);
+        provideRequestScope(app, scope);
+        expect(await renderToString(app)).toBe('<p>Prezzi|it|Prezzi</p>');
+    });
+
+    it("the raw signals answer with the request's scope inside it, and with the process outside it", async () => {
+        seed(CATALOGS.de, 'de');
+        const scope = await createRequestScope({ locale: 'it', catalog: CATALOGS.it as never });
+        const read = () => [
+            currentlyLoadedLocale.get(),
+            (sTranslations.get() as Record<string, Record<string, string>>).UI?.Pricing,
+        ];
+        expect(scope.run(read)).toEqual(['it', 'Prezzi']);
+        expect(read()).toEqual(['de', 'Preise']);
+    });
+
+    it("concurrent it and de requests each read their own triple, the process's de state notwithstanding", async () => {
+        seed(CATALOGS.de, 'de');
+        const Probe = defineComponent({
+            async setup() {
+                const [waiting, restore] = withAsyncContext(() => Promise.resolve());
+                await waiting;
+                restore();
+                const t = useT();
+                const locale = useCurrentLocale();
+                const catalog = useTranslations();
+                return () =>
+                    h(
+                        'p',
+                        `${t.value('Pricing', 'UI') as string}|${locale.value}|${(catalog.value as Record<string, Record<string, string>>).UI?.Pricing}`
+                    );
+            },
+        });
+        const [it, de] = await Promise.all(
+            (['it', 'de'] as const).map(async (locale) => {
+                const scope = await createRequestScope({ locale, catalog: CATALOGS[locale] as never });
+                return scope.run(() => renderToString(createSSRApp(Probe)));
+            })
+        );
+        expect(it).toBe('<p>Prezzi|it|Prezzi</p>');
+        expect(de).toBe('<p>Preise|de|Preise</p>');
     });
 });

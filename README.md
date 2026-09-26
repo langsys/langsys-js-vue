@@ -440,7 +440,7 @@ const render = useServerMessage();
 
 ## Server-Side Rendering (Nuxt)
 
-The SDK is SSR-compatible. Hand the client the catalog the server rendered with by calling `LangsysApp.seedCatalog(translations, locale)` **synchronously, on both sides, before anything renders** — the first client render then matches the served HTML. `init({ initialTranslations })` is asynchronous and cannot do this. Two limits apply today: the server-side seed is **process-global**, so a server rendering several locales concurrently leaks them into each other, and `<Translate>`/`<Phrase>` serve base language until they mount.
+Each server request renders inside its own request scope from the base SDK, so concurrent requests in different locales never see each other's text. The server helpers are in `langsys-js-vue/server`: `provideRequestScope(app, scope)` for Nuxt, `renderInRequestScope(options, render)` for plain Vite SSR. Hand the client `scope.seed()` and call `LangsysApp.seedCatalog(seed.catalog, seed.locale)` **synchronously, before the app mounts**, so the first client render matches the served HTML. `<Translate>` and `<Phrase>` serve source text until they mount in the browser.
 
 📖 **See [README-SSR.md](./README-SSR.md)** for a complete Nuxt walkthrough.
 

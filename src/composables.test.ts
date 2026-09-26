@@ -74,14 +74,18 @@ afterEach(() => {
 describe('useWriteEnabled — SSR', () => {
     it('reports undefined and never subscribes the process-wide signal', async () => {
         signal.set(true); // as if another request on this server had resolved
-        const { useWriteEnabled, useSignal, effectScope } = await load({ browser: false });
+        const { useWriteEnabled, effectScope, shallowRef, onScopeDispose } = await load({ browser: false });
 
         // The failing case: the obvious implementation — wrap the signal like
         // every other composable does. Under SSR it both leaks a client-only
         // value into server HTML and attaches a subscriber to a singleton that
         // outlives the request.
         const naiveScope = effectScope();
-        const naive = naiveScope.run(() => useSignal(signal))!;
+        const naive = naiveScope.run(() => {
+            const value = shallowRef(signal.get());
+            onScopeDispose(signal.subscribe((next: boolean | undefined) => void (value.value = next)));
+            return value;
+        })!;
         expect(naive.value).toBe(true); // leaked into the server render
         expect(signal.subscriberCount()).toBe(1); // subscription outliving the request
         naiveScope.stop();

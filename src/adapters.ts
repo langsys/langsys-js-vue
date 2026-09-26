@@ -23,6 +23,11 @@ import { createSignal, type Signal, type WriteGrant } from 'langsys-js-typescrip
  */
 export function useSignal<T>(signal: Signal<T>): Readonly<ShallowRef<T>> {
     const value = shallowRef(signal.get()) as ShallowRef<T>;
+    // On the server nothing re-renders, and Vue's server renderer never stops a component's
+    // effect scope, so a subscription made here would never be released: every request would
+    // leave a listener on a process-lifetime signal. Read once instead. Inside a request scope
+    // (SRV-7), `signal.get()` is already the scope's value.
+    if (typeof window === 'undefined') return value;
     const unsubscribe = signal.subscribe((next) => {
         value.value = next;
     });

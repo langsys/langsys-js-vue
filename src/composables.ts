@@ -1,6 +1,12 @@
-import { currentlyLoadedLocale, sTranslations, tSignal, writeEnabled } from 'langsys-js-typescript';
-import type { Signal, TFunction, iCategories } from 'langsys-js-typescript';
-import { getCurrentScope, onScopeDispose, shallowRef } from 'vue';
+import {
+    currentRequestScope,
+    currentlyLoadedLocale,
+    sTranslations,
+    tSignal,
+    writeEnabled,
+} from 'langsys-js-typescript';
+import type { RequestScope, Signal, TFunction, iCategories } from 'langsys-js-typescript';
+import { getCurrentInstance, getCurrentScope, inject, onScopeDispose, shallowRef } from 'vue';
 import type { ShallowRef } from 'vue';
 import { createLocaleStore, useSignal } from './adapters.js';
 
@@ -18,7 +24,28 @@ import { createLocaleStore, useSignal } from './adapters.js';
  * type-checked against the params object at the call site.
  */
 export function useT(): Readonly<ShallowRef<TFunction>> {
-    return useSignal(tSignal);
+    const scope = serverScope();
+    return scope ? shallowRef(scope.t) : useSignal(tSignal);
+}
+
+/**
+ * The injection key a server render hands its request scope under (SRV-7). `Symbol.for`, so the
+ * main entry and the `server` entry, bundled separately, agree on it.
+ */
+export const REQUEST_SCOPE_KEY = Symbol.for('langsys-js-vue.requestScope');
+
+/**
+ * On the server, the request scope this render belongs to: the one provided to this Vue app
+ * (`provideRequestScope`, the Nuxt path), else the one current in this async context
+ * (`scope.run` or `scope.enter`). In the browser, or outside any scope, `null`.
+ *
+ * The composables read the scope directly, not the core's process-wide signals: on the server
+ * those hold whatever the process last loaded, which is another visitor's locale and catalog.
+ */
+function serverScope(): RequestScope | null {
+    if (typeof window !== 'undefined') return null;
+    const provided = getCurrentInstance() ? inject<RequestScope | null>(REQUEST_SCOPE_KEY, null) : null;
+    return provided ?? currentRequestScope() ?? null;
 }
 
 /**
@@ -27,7 +54,8 @@ export function useT(): Readonly<ShallowRef<TFunction>> {
  * settles, which makes it the right value to gate "translations are ready" UI on.
  */
 export function useCurrentLocale(): Readonly<ShallowRef<string>> {
-    return useSignal(currentlyLoadedLocale);
+    const scope = serverScope();
+    return scope ? shallowRef(scope.locale) : useSignal(currentlyLoadedLocale);
 }
 
 /**
@@ -35,7 +63,8 @@ export function useCurrentLocale(): Readonly<ShallowRef<string>> {
  * Exposed for advanced cases (inspecting which categories/phrases are loaded).
  */
 export function useTranslations(): Readonly<ShallowRef<iCategories>> {
-    return useSignal(sTranslations);
+    const scope = serverScope();
+    return scope ? shallowRef(scope.seed().catalog as iCategories) : useSignal(sTranslations);
 }
 
 /**
