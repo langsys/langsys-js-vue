@@ -99,7 +99,7 @@ canonicalizeLocale(locale)    // re-exported locale normalizer; canonical form i
 syncNavigation(router)        // Vue Router afterEach → notifyNavigation(); returns the remover
 notifyNavigation()            // the core entry point, for any other router
 useServerMessage(category?)   -> Readonly<Ref<(entry: ServerMessage) => string>>  // core renderServerMessage, reactive
-resolveServerMessages(body, { key?, resolver? }), renderServerMessage(entry, category?)  // core, re-exported
+resolveServerMessages(body, { key } | { resolver }, pieces?), renderServerMessage(entry, category?)  // core, re-exported; resolve throws with neither
 
 // Components
 <Translate category? custom_id? label? tag? />       // class falls through

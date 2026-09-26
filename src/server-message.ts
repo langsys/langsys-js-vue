@@ -12,7 +12,7 @@ import { useT } from './composables.js';
  * ```vue
  * <script setup>
  * const render = useServerMessage();
- * const entries = resolveServerMessages(page.props.errors);
+ * const entries = resolveServerMessages(page.props, { key: 'langsys_errors' });
  * </script>
  * <template><p v-for="e in entries" :key="e.code">{{ render(e) }}</p></template>
  * ```

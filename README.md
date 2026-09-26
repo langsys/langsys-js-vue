@@ -382,7 +382,7 @@ syncNavigation(router);
 
 ## Server messages
 
-Validation errors and system messages a server registers ahead of time arrive as entries — `{ field?, code, message, template, params? }`. Render them with `useServerMessage()`:
+Validation errors and system messages stay in your framework's own error format. A Langsys server SDK attaches translatable entries beside them — `{ template, params?, message, field?, code? }` — under a key you configure (the Laravel binding uses `langsys_errors`). Render them with `useServerMessage()`:
 
 ```vue
 <script setup lang="ts">
@@ -393,26 +393,29 @@ const render = useServerMessage();
 </script>
 
 <template>
-    <p v-for="entry in resolveServerMessages(body)" :key="entry.code">{{ render(entry) }}</p>
+    <p v-for="(entry, i) in resolveServerMessages(body, { key: 'langsys_errors' })" :key="i">{{ render(entry) }}</p>
 </template>
 ```
 
-`render(entry)` shows the template's translation, filled from `entry.params` (a count param selects its plural branch), when the catalog has one, and the server's own `entry.message` otherwise — no SDK initialized, no catalog loaded, or a template not translated yet. It re-renders on locale and catalog changes. Branch on `entry.code`, never on the text.
+`render(entry)` shows the template's translation, filled from `entry.params` (a count param selects its plural branch), when the catalog has one, and the server's own `entry.message` otherwise — no SDK initialized, no catalog loaded, a template not translated yet, or an entry that carries only a message. It re-renders on locale and catalog changes. `entry.field` and `entry.code` are your framework's own, passed through unchanged; branch on them, never on the text.
 
-`resolveServerMessages(body, { key?, resolver? })` finds the entries wherever they sit in a response body; pass `key` for a known location or `resolver` to map an error format of your own. Templates are looked up under the `messagesCategory` passed to `init()` (default `Errors`), which must match the category the server registers them under; `useServerMessage(category)` overrides it per call.
+`resolveServerMessages(body, { key })` reads the entries only from the dotted path you name, and never searches the rest of the body; pass `{ resolver }` instead to map a body yourself, and `pieces` if your entries use other names for their pieces. It throws when given neither `key` nor `resolver`, and never changes the body. Templates are looked up under the `messagesCategory` passed to `init()` (default `Errors`), which must match the category the server registers them under; `useServerMessage(category)` overrides it per call.
 
-**Inertia.** A server binding that redirects after a failed form keeps the entries in the session and shares them as a page prop. The destination page renders them the same way — pass the prop to `resolveServerMessages()`:
+**Inertia.** A server binding that redirects after a failed form keeps the entries in the session and shares them as a page prop beside the framework's own `errors`, which it leaves untouched. The destination page resolves them from its props by the same key:
 
 ```vue
 <script setup lang="ts">
+import { usePage } from '@inertiajs/vue3';
 import { resolveServerMessages, useServerMessage } from 'langsys-js-vue';
 
-const props = defineProps<{ errors: unknown }>();
+const page = usePage();
 const render = useServerMessage();
 </script>
 
 <template>
-    <p v-for="entry in resolveServerMessages(props.errors)" :key="entry.code">{{ render(entry) }}</p>
+    <p v-for="(entry, i) in resolveServerMessages(page.props, { key: 'langsys_errors' })" :key="i">
+        {{ render(entry) }}
+    </p>
 </template>
 ```
 

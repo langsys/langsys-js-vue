@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp, defineComponent, h, nextTick, type PropType } from 'vue';
+import { resolveServerMessages as coreResolve } from 'langsys-js-typescript';
 import { LangsysApp, resolveServerMessages, useServerMessage, type ServerMessage } from './index.js';
 
 /**
@@ -14,8 +15,9 @@ import { LangsysApp, resolveServerMessages, useServerMessage, type ServerMessage
  * from langsys-js-typescript, blob c8125549) is rendered through a mounted component and
  * asserted on the DOM.
  *
- * MSG-12's page half: an Inertia page receives the server's error body as a prop, resolves
- * the entries with the core's `resolveServerMessages()`, and renders them through this helper.
+ * MSG-12's page half: an Inertia page receives Laravel's own error body, with the entries the
+ * server binding attached under `langsys_errors`, resolves them by that key with the core's
+ * `resolveServerMessages()`, renders them through this helper, and leaves the body untouched.
  */
 
 interface RenderVector {
@@ -28,6 +30,7 @@ interface RenderVector {
 }
 const VECTORS = JSON.parse(readFileSync(join(process.cwd(), 'test/fixtures/server-message-vectors.json'), 'utf8')) as {
     render: RenderVector[];
+    resolve: Array<{ id: string; body: unknown; options: unknown; expected: unknown }>;
 };
 
 const seed = (catalog: object, locale: string) =>
@@ -95,39 +98,59 @@ describe('MSG-5 — reactivity', () => {
 });
 
 describe('MSG-12 — the page half of an Inertia hand-off', () => {
-    const body = {
-        status: false,
-        error: {
-            code: 'validation_failed',
-            errors: [
-                {
-                    field: 'email',
-                    code: 'required',
-                    template: 'The email field is required.',
-                    message: 'The email field is required.',
-                },
-            ],
-        },
-    };
+    /**
+     * The page props are the shared vectors' `laravel-422-body` resolve row: Laravel's own 422
+     * body, `message` and `errors` untouched, with the entries the server binding attached
+     * beside them under `langsys_errors`.
+     */
+    const row = VECTORS.resolve.find((r) => r.id === 'laravel-422-body')!;
     const Page = defineComponent({
-        props: { errors: { type: Object, required: true } },
+        props: { page: { type: Object, required: true } },
         setup(props) {
             const render = useServerMessage();
             return () =>
                 h(
                     'ul',
-                    resolveServerMessages(props.errors).map((e) => h('li', render.value(e)))
+                    resolveServerMessages(props.page, { key: 'langsys_errors' }).map((e) => h('li', render.value(e)))
                 );
         },
     });
 
-    it('entries shared as a page prop resolve and render in the page locale', () => {
-        seed({ ...EMPTY, Errors: { 'The email field is required.': 'El campo email es obligatorio.' } }, 'es');
-        expect(texts(mount(Page, { errors: body }))).toEqual(['El campo email es obligatorio.']);
+    it('control: the vector row exists and is the Laravel body', () => {
+        expect(row, 'laravel-422-body is missing from the vectors').toBeDefined();
+        expect(Object.keys(row.body as object)).toEqual(expect.arrayContaining(['errors', 'langsys_errors']));
     });
 
-    it('control: with no catalog, the same prop renders the server message', () => {
+    it("the entries render in the page locale, and the framework's own errors prop is left untouched", () => {
+        const page = structuredClone(row.body) as Record<string, unknown>;
+        seed(
+            {
+                ...EMPTY,
+                Errors: {
+                    'The password field must be at least {min} characters.':
+                        'La contraseña debe tener al menos {min} caracteres.',
+                },
+            },
+            'es'
+        );
+        expect(texts(mount(Page, { page }))).toEqual([
+            'La contraseña debe tener al menos 12 caracteres.',
+            'The selected plan is invalid.',
+        ]);
+        expect(page).toEqual(row.body);
+    });
+
+    it('control: with no catalog, the page renders the messages the server filled', () => {
         seed(EMPTY, 'en');
-        expect(texts(mount(Page, { errors: body }))).toEqual(['The email field is required.']);
+        expect(texts(mount(Page, { page: structuredClone(row.body) }))).toEqual(
+            (row.expected as Array<{ message: string }>).map((e) => e.message)
+        );
+    });
+
+    it("resolveServerMessages is the core's own, found only under the configured key", () => {
+        expect(resolveServerMessages).toBe(coreResolve);
+        expect(() => resolveServerMessages(row.body, {} as never)).toThrow(TypeError);
+        for (const r of VECTORS.resolve)
+            expect(resolveServerMessages(r.body, r.options as never), r.id).toEqual(r.expected);
     });
 });
