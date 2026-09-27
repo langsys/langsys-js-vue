@@ -165,13 +165,13 @@ function changeLocale(next: string) {
 
 ## What server rendering covers
 
-- The served bytes carry the request locale's translations for everything rendered through `useT()`, so crawlers index the translated page, and concurrent requests in different locales each get their own.
+- The served bytes carry the request locale's translations for everything rendered through `useT()`, `<Translate>` and `<Phrase>`, so crawlers index the translated page, and concurrent requests in different locales each get their own. Every `<Translate>` host carries its block id (`data-ls-contentblock`).
 - The first client render matches the served HTML, with no duplicate catalog fetch and no flash of untranslated `useT()` text.
 - `useCurrentLocale()` and `useTranslations()`, and the raw `currentlyLoadedLocale` and `sTranslations` signals, read the request's scope on the server.
 
 Limits:
 
-- **`<Translate>` and `<Phrase>` serve source text.** Their translation runs in the base SDK's DOM classes, which run only when a component mounts in the browser; the client translates them after hydration. A `<Translate>` with an explicit `custom_id` carries its identity (`data-ls-contentblock`) in the served HTML; a block with a derived id does not.
+- **A block whose slot holds a component or `v-html` is served as source text.** The base SDK renders `<Translate>` and `<Phrase>` from their markup, and neither has markup to read until it renders. Such a block carries only an explicit `custom_id` in the served HTML, is translated in the browser after mount, and the base SDK logs a warning once per reason.
 
 ## `ssrTokenStrategy`
 

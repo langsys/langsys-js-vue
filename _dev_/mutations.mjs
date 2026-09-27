@@ -223,7 +223,7 @@ export const MUTATIONS = [
     {
         id: 'M14',
         rules: 'MARK-1',
-        what: 'the explicit custom_id is no longer stamped on the rendered host',
+        what: 'a fallback block (a component in its slot) no longer stamps its explicit custom_id',
         file: 'src/components/Translate.ts',
         edits: [
             {
@@ -231,20 +231,20 @@ export const MUTATIONS = [
                 replace: '{ ref: host },',
             },
         ],
-        check: vitest('src/marker-ssr.test.ts'),
+        check: vitest('src/block-ssr.test.ts'),
     },
     {
         id: 'M15',
-        rules: 'MARK-1',
-        what: 'the DOM class is re-created before Vue patches the host (pre-flush)',
+        rules: 'MARK-1, SRV-1',
+        what: "the rendered block's host attributes (its id, its resolved marker) are not stamped",
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: "watch(() => [props.category, props.custom_id, props.label], create, { flush: 'post' });",
-                replace: 'watch(() => [props.category, props.custom_id, props.label], create);',
+                find: 'return h(props.tag, { ref: host, ...rendered.hostAttrs }, [',
+                replace: 'return h(props.tag, { ref: host }, [',
             },
         ],
-        check: vitest('src/marker-ssr.test.ts'),
+        check: vitest('src/marker-ssr.test.ts', 'src/block-ssr.test.ts'),
     },
     {
         id: 'M16',
@@ -263,7 +263,7 @@ export const MUTATIONS = [
     {
         id: 'M17',
         rules: 'MARK-1',
-        what: "the served stamp uses an attribute name other than the core's",
+        what: "a fallback block stamps its explicit id under an attribute name other than the core's",
         file: 'src/components/Translate.ts',
         edits: [
             {
@@ -271,7 +271,7 @@ export const MUTATIONS = [
                 replace: "{ ['data-ls-content-block']: props.custom_id }",
             },
         ],
-        check: vitest('src/marker-ssr.test.ts'),
+        check: vitest('src/block-ssr.test.ts'),
     },
     {
         id: 'M18',
@@ -353,12 +353,12 @@ export const MUTATIONS = [
     {
         id: 'M24',
         rules: 'GATE-10',
-        what: '<Translate> hands the core a detached copy of its host instead of the host in the page',
+        what: '<Translate> registers its block without handing the core its host, so no resolved ancestor is seen',
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: 'new VanillaTranslate(host.value, {',
-                replace: 'new VanillaTranslate(host.value.cloneNode(true) as HTMLElement, {',
+                find: 'registerBlock(tree, { ...options(), host: host.value });',
+                replace: 'registerBlock(tree, options());',
             },
         ],
         check: vitest('src/resolved-contract.test.ts'),
@@ -366,12 +366,12 @@ export const MUTATIONS = [
     {
         id: 'M25',
         rules: 'GATE-10',
-        what: '<Phrase> hands the core a detached copy of its host instead of the host in the page',
+        what: '<Phrase> registers its phrase without handing the core its host',
         file: 'src/components/Phrase.ts',
         edits: [
             {
-                find: 'new VanillaPhrase(host.value, {',
-                replace: 'new VanillaPhrase(host.value.cloneNode(true) as HTMLElement, {',
+                find: 'registerBlock(tree, { category: props.category, params: props.params, host: host.value });',
+                replace: 'registerBlock(tree, { category: props.category, params: props.params });',
             },
         ],
         check: vitest('src/resolved-contract.test.ts'),
@@ -522,6 +522,53 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M38',
+        rules: 'SRV-1, SRV-5',
+        what: 'the translated tree is rebuilt without the source back-reference, so a moved element loses its handler and ref',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: 'const original = node.source === undefined ? undefined : elements[node.source];',
+                replace: 'const original = elements.length < 0 ? elements[0] : undefined;',
+            },
+        ],
+        check: vitest('src/block-ssr.test.ts', 'src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M39',
+        rules: 'MARK-3',
+        what: "the app's custom_id is handed to the core as an adopted stamp, so an unknown block never registers under it",
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '...(props.custom_id ? { id: props.custom_id } : {}),',
+                replace: '...(props.custom_id ? { customId: props.custom_id } : {}),',
+            },
+        ],
+        check: vitest('src/resolved-contract.test.ts'),
+    },
+    {
+        id: 'M40',
+        rules: 'SRV-5 (the fallback)',
+        what: 'a component in the slot is treated as convertible instead of falling back',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: "if (typeof vnode.type !== 'string') return void (failure = 'component');",
+                replace: "if (typeof vnode.type !== 'string') return;",
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M41',
+        rules: 'SRV-5',
+        what: 'a block nested under a DOM-class fallback registers itself too, so the ancestor walk and the block both send it',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: '            if (ancestor?.owns) return;\n', replace: '' }],
+        check: vitest('src/resolved-contract.test.ts'),
     },
 ];
 

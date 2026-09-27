@@ -18,6 +18,7 @@ src/
     navigation.ts             # syncNavigation(router) — Vue Router afterEach → core notifyNavigation() (HINT-13)
     server-message.ts         # useServerMessage() — reactive wrapper over core renderServerMessage() (MSG-5)
     server.ts                 # `langsys-js-vue/server` (server-only entry): request scopes for SSR (SRV-7)
+    block-vnodes.ts           # slot vnodes ↔ the core's block tree, for <Translate>/<Phrase> (SRV-1, MARK-1)
     components/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
         Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
@@ -44,6 +45,8 @@ src/
     ssr-scope.test.ts         # SRV-7/SRV-2: request scopes — run, provide (Nuxt), enter; the enter-in-plugin hazard
     ssr-scope-contract.test.ts # SRV-1/SRV-3 through a scope against the contract double (own process)
     ssr-subscriptions.test.ts # server renders leave no subscription on the core's signals
+    block-vnodes.test.ts      # slot → tree mapping, fallbacks, re-attachment through `source`
+    block-ssr.test.ts         # <Translate>/<Phrase> served translated and stamped; hydration parity
 test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
 contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
@@ -67,7 +70,7 @@ Components are authored as `defineComponent` + `h()` render functions in plain `
 
 5. **`useLocaleStore(initial)`** — creates one `Signal<string>` per `setup()` call (setup runs once per component instance, so no memoization dance is needed), subscribes with `useSignal`, and returns `{ locale, setLocale, store }`. Pass `store` to `init`; drive the locale with `setLocale`.
 
-6. **`<Translate>` / `<Phrase>`** — wrap the vanilla `Translate` / `Phrase` DOM classes. A template ref gets the host node; `onMounted` constructs the instance and `onBeforeUnmount` calls `destroy()`. `<Phrase>` recreates its instance only on `category` change; param changes flow through `setParams` via a deep watcher. The DOM walking, content-block registration, attribute harvesting, and re-translation on locale change all live in the underlying classes. The components mutate the rendered DOM in place — keep children static. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
+6. **`<Translate>` / `<Phrase>`** — render through the core's DOM-free block path, identically on the server and in the browser. `src/block-vnodes.ts` converts the default slot's vnodes into the core's `BlockNode[]` (elements, text, fragments; teleports set aside), the render calls `renderBlock` and stamps its `hostAttrs`, and the translated copy comes back as vnodes by cloning each original vnode through its integer `source` (pre-order index), so handlers, refs and directives survive markup the translation moved. `<Phrase>` renders its slot as a phrase-marked host node. Rendering registers nothing: the component calls `registerBlock(tree, { …, host })` on mount and whenever `t` changes. A slot holding a component or `v-html` falls back: `warnUnrenderedBlock(reason)`, source served with only an explicit id stamped, and the vanilla DOM class after mount. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
 
 ## Public API
 
@@ -194,7 +197,11 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Keep `refToWriteGrant` lazy and non-subscribing.** It must return a provider that reads on every call. Snapshotting the ref produces a grant that can never refresh — and since grants are short-lived, that passes every test that doesn't specifically check for it and then expires in production.
 - **A served `<Translate>` host carries its explicit `custom_id`, and the DOM class re-creates after Vue patches.** The core stamps `data-ls-contentblock` only on mount, which never happens during SSR, so the binding stamps an explicit id in `h()` with the core's exported `CONTENT_BLOCK_MARKER_ATTR`; `marker-ssr.test.ts` checks the served attribute against the one the core's class writes. Keep the re-create watcher on `flush: 'post'`: pre-flush, switching explicit→derived let Vue's patch remove the stamp the core had just written.
 - **The SSR hand-off is `seedCatalog()` — synchronous, on both sides, before anything renders.** `init({ initialTranslations })` applies its catalog only after an authorization round trip, so it can never seed the first client render. And the server-side seed is process-global: concurrent renders in different locales leak into each other. Do not document server-rendered translation as safe under mixed-locale concurrency.
-- **Components hand the core the host that is in the page.** The core's GATE-10 reader walks ancestors from the element it is given to find `data-ls-resolved`; a detached or cloned element finds nothing and registers already-translated text (M24, M25).
+- **The app's `custom_id` goes to the core as `id`, never `customId`.** `id` renders and registers under it; `customId` adopts a stamp and registers nothing, so an explicit-id block the catalog lacks would never register (M39).
+- **Re-attach translated elements through `source`; never rebuild them from the translated copy.** The core's tree cannot carry handlers, refs or directives, and a translation can move markup (M38).
+- **A block nested under a DOM-class fallback does not register itself.** The ancestor's DOM class registers every nested marked host on its own walk (MARK-4); both registering sends the block twice (SRV-5, M41). `FALLBACK_ANCESTOR` carries that down.
+- **Bindings write no console output.** A block that falls back calls the core's `warnUnrenderedBlock(reason)`.
+- **Components hand the core the host that is in the page.** `registerBlock(tree, { host })` walks up from `host.parentElement` to find `data-ls-resolved`; without the host it sees no ancestor and registers already-translated text (M24, M25).
 - **`syncNavigation` only times the core's `notifyNavigation()`.** It decides nothing else (BIND-1). Keep it on `afterEach`, after the URL has moved; a call before the move records misses at the old URL.
 - **On the server, composables never subscribe.** Vue's server renderer never stops a component's effect scope, so a subscription made during a server render is never released; `useSignal` reads once when there is no `window` (`ssr-subscriptions.test.ts`, M33).
 - **On the server, `useT`, `useCurrentLocale` and `useTranslations` read the request scope.** The scope provided to the app first (the Nuxt path, which has no async context), then the one current in the async context. Without the provided-scope read, a Nuxt render would fall back to process state, which is another visitor's (M35, M36). `REQUEST_SCOPE_KEY` is `Symbol.for(...)` because the main and server entries are separate bundles.

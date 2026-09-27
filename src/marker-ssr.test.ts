@@ -14,10 +14,10 @@ import { Translate } from './index.js';
  * `data-ls-contentblock="…"` — two paths over the same markup disagreeing, which CONF-1's
  * every-path clause does not allow.
  *
- * An explicit `custom_id` IS the resolved id and is known at render time, so the
- * binding stamps it on every path. A derived id needs the rendered subtree tokenized,
- * which only the core's DOM class (client) or a server SDK can do — that half stays a
- * known gap, and is pinned below rather than left implicit.
+ * The binding renders a block through the core's DOM-free `renderBlock`, on the server and in
+ * the browser alike, and stamps the host attributes it returns: an explicit `custom_id`, or the
+ * id derived from the rendered content. A slot the tree cannot express (a component,
+ * `v-html`) is served as source with only an explicit id stamped.
  *
  * MARK-1's test asks for two independent paths to one value, because reading back the
  * attribute the renderer just wrote proves only that it was written. Here the second
@@ -62,10 +62,11 @@ describe('MARK-1 — a served <Translate> host carries its identity', () => {
         expect(html).toContain(`${ATTR}="explicit-1"`);
     });
 
-    it('control: a derived-id block is served unstamped — the known SSR gap, pinned', async () => {
-        // Also proves the stamp above is conditional rather than unconditional.
+    it("a derived-id block is served stamped with the id the core's own class derives on mount", async () => {
         const html = await renderToString(createSSRApp(Block()));
-        expect(html).not.toContain(ATTR);
+        const derived = (await stampedByCore())[ATTR];
+        expect(derived, 'control: the core derives an id for this content').toBeTruthy();
+        expect(html).toContain(`${ATTR}="${derived}"`);
     });
 
     it("the served stamp is the core's own — same attribute name, same value, derived independently", async () => {

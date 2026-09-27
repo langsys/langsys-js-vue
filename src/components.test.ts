@@ -60,13 +60,10 @@ describe('Translate', () => {
         expect(html).toContain('class="hero"');
     });
 
-    it('accepts a params prop without breaking render', async () => {
-        // SSR render does not mount the vanilla handler (no onMounted), so
-        // interpolation is not applied here — this only asserts the prop is
-        // wired and children still pass through. Live interpolation is the base
-        // SDK's job, exercised by the example playground.
+    it('fills params on the server, from %name% placeholders in the content', async () => {
         const html = await render(Translate, { category: 'UI', params: { name: 'Sarah' } }, 'Hello, %name%');
         expect(html).toMatch(/^<translate/);
-        expect(html).toContain('Hello, %name%');
+        expect(html).toContain('Hello, Sarah');
+        expect(html).not.toContain('%name%');
     });
 });

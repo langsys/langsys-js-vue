@@ -274,7 +274,7 @@ The component:
 - Registers the whole thing as a **content block** that translators handle as one unit while still translating the individual phrases inside.
 - Auto re-translates on locale change.
 
-`<Translate>` mounts the SDK's DOM walker on its host element and lets it mutate the rendered output in place, so **keep its children static** — prose, marketing copy, CMS-rendered articles, forms with placeholders. For dynamic per-string values that Vue owns, use `useT()`.
+`<Translate>` renders its content through the base SDK's block renderer, the same way on the server and in the browser: the served HTML carries the translation and the block's id, and the browser takes it over without a hydration mismatch. Keep its children plain markup — prose, marketing copy, CMS-rendered articles, forms with placeholders. A slot holding a component or `v-html` cannot be rendered that way: it is served as source text, with only an explicit `custom_id` stamped, and translated in the browser after mount (the base SDK logs a warning once). For dynamic per-string values that Vue owns, use `useT()`.
 
 ```vue
 <!-- CMS content goes through Translate as-is -->
@@ -440,7 +440,7 @@ const render = useServerMessage();
 
 ## Server-Side Rendering (Nuxt)
 
-Each server request renders inside its own request scope from the base SDK, so concurrent requests in different locales never see each other's text. The server helpers are in `langsys-js-vue/server`: `provideRequestScope(app, scope)` for Nuxt, `renderInRequestScope(options, render)` for plain Vite SSR. Hand the client `scope.seed()` and call `LangsysApp.seedCatalog(seed.catalog, seed.locale)` **synchronously, before the app mounts**, so the first client render matches the served HTML. `<Translate>` and `<Phrase>` serve source text until they mount in the browser.
+Each server request renders inside its own request scope from the base SDK, so concurrent requests in different locales never see each other's text. The server helpers are in `langsys-js-vue/server`: `provideRequestScope(app, scope)` for Nuxt, `renderInRequestScope(options, render)` for plain Vite SSR. Hand the client `scope.seed()` and call `LangsysApp.seedCatalog(seed.catalog, seed.locale)` **synchronously, before the app mounts**, so the first client render matches the served HTML. `<Translate>` and `<Phrase>` serve their translations too, except a block whose slot holds a component or `v-html`, which is served as source text and translated in the browser.
 
 📖 **See [README-SSR.md](./README-SSR.md)** for a complete Nuxt walkthrough.
 

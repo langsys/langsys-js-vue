@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as vue from 'vue';
 import { createSSRApp, defineComponent, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { LangsysApp, useT } from './index.js';
+import { LangsysApp, Phrase, Translate, useT } from './index.js';
 import { currentlyLoadedLocale, sTranslations } from 'langsys-js-typescript';
 import { useCurrentLocale, useTranslations } from './index.js';
 import { createRequestScope, installRequestScopes, provideRequestScope, type RequestScope } from './server.js';
@@ -223,6 +223,26 @@ describe('SRV-7 — Nuxt-shaped: the plugin cannot wrap the render', () => {
     it('hazard, pinned: scope.enter() inside an awaited plugin serves the Italian request German', async () => {
         const { it } = await interleaved('enter-in-plugin');
         expect(it).not.toContain(EXPECTED.it);
+    });
+});
+
+describe("SRV-1 — <Translate> and <Phrase> serve the request scope's translations", () => {
+    it('concurrent it and de requests each serve their own block and phrase translations', async () => {
+        const Blocks = defineComponent({
+            render: () =>
+                h('div', [
+                    h(Translate, { category: 'UI' }, () => [h('p', 'Pricing')]),
+                    h(Phrase, { category: 'UI' }, () => 'Pricing'),
+                ]),
+        });
+        const [it, de] = await Promise.all(
+            (['it', 'de'] as const).map(async (locale) => {
+                const scope = await createRequestScope({ locale, catalog: CATALOGS[locale] as never });
+                return scope.run(() => renderToString(createSSRApp(Blocks)));
+            })
+        );
+        expect(it).toMatch(/data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase>Prezzi<\/span>/);
+        expect(de).toMatch(/data-ls-resolved="de"><p>Preise<\/p><\/translate><span data-ls-phrase>Preise<\/span>/);
     });
 });
 

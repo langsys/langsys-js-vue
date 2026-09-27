@@ -1,6 +1,16 @@
-import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { defineComponent, h, inject, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import type { PropType } from 'vue';
-import { CONTENT_BLOCK_MARKER_ATTR, Translate as VanillaTranslate, type ParamPrimitive } from 'langsys-js-typescript';
+import {
+    CONTENT_BLOCK_MARKER_ATTR,
+    Translate as VanillaTranslate,
+    registerBlock,
+    renderBlock,
+    warnUnrenderedBlock,
+    type BlockNode,
+    type ParamPrimitive,
+} from 'langsys-js-typescript';
+import { FALLBACK_ANCESTOR, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
+import { useT } from '../composables.js';
 
 /**
  * Props for the Vue `Translate` component. Mirrors the React/Svelte components
@@ -27,20 +37,18 @@ export interface TranslateProps {
 }
 
 /**
- * Vue wrapper around the vanilla `Translate` DOM class from
- * `langsys-js-typescript`. It renders a host element, then on mount lets the
- * vanilla class walk and tokenize the rendered children (text nodes plus
- * translatable attributes), register the content block, and re-translate on
- * locale change. On unmount it tears the instance down.
+ * A content block: its slot is translated as one unit by the base SDK's block renderer.
  *
- * This is the Vue analog of the React/Svelte `<Translate>` components — pure
- * mount/destroy glue. The DOM walking, content-block registration, attribute
- * harvesting, `%name%`→`{name}` normalization, and re-translation lifecycle all
- * live in the base SDK.
+ * The render converts the slot into the core's block tree, renders it with `renderBlock` over
+ * the active catalog (a request scope's on the server, the page's in the browser) and stamps
+ * the host attributes it returns, so served HTML carries the translation and the block's id and
+ * hydration finds the same bytes. It re-renders when the catalog or locale changes, and
+ * registers the block on mount and after each change. Tokenization, identity, interpolation and
+ * `%name%`→`{name}` normalization all live in the base SDK.
  *
- * The SDK mutates the rendered DOM in place, so keep the children static:
- * prose, marketing copy, CMS-rendered HTML — the content-block use case. For
- * dynamic per-string values that Vue owns and re-renders, use `useT()` instead.
+ * A slot holding a component or `v-html` has no markup to read until it renders, so it falls
+ * back: served as source with only an explicit `custom_id` stamped, and handled by the core's
+ * DOM class after mount. For dynamic per-string values that Vue owns, use `useT()` instead.
  */
 export const Translate = defineComponent({
     name: 'Translate',
@@ -53,10 +61,25 @@ export const Translate = defineComponent({
     },
     setup(props, { slots }) {
         const host = ref<HTMLElement | null>(null);
+        const t = useT();
+        const ancestor = inject(FALLBACK_ANCESTOR, null);
+        const mode = { owns: false };
+        provide(FALLBACK_ANCESTOR, mode);
         let instance: VanillaTranslate | undefined;
+        /** What the last render converted: the tree to register, or null when the slot fell back. */
+        let tree: BlockNode[] | null = null;
 
+        const options = () => ({
+            category: props.category,
+            label: props.label,
+            params: props.params,
+            ...(props.custom_id ? { id: props.custom_id } : {}),
+        });
+
+        // Fallback: a slot the tree cannot express (a component, v-html) is walked by the core's
+        // DOM class after mount, as before.
         const create = () => {
-            if (!host.value) return;
+            if (!host.value || tree) return;
             instance?.destroy();
             instance = new VanillaTranslate(host.value, {
                 category: props.category,
@@ -65,15 +88,23 @@ export const Translate = defineComponent({
                 params: props.params,
             });
         };
+        // The tree path registers on mount and again whenever `t` changes — a locale or catalog
+        // change, or a navigation (HINT-13) — since rendering registers nothing.
+        const register = () => {
+            // An ancestor that fell back to the DOM class registers this block with its own walk.
+            if (ancestor?.owns) return;
+            if (host.value && tree) registerBlock(tree, { ...options(), host: host.value });
+        };
 
-        onMounted(create);
-        // `flush: 'post'` — re-create the DOM class AFTER Vue patches the host. With the
-        // default pre-flush, switching from an explicit `custom_id` to a derived one ran
-        // `create()` first (the core stamped the derived id) and Vue's patch then removed
-        // the attribute the previous vnode had declared, leaving the host unmarked. It is
-        // also the right order for a class that walks the rendered subtree.
-        watch(() => [props.category, props.custom_id, props.label], create, { flush: 'post' });
-        // Param changes (e.g. a changed count) flow through setParams without recreating.
+        onMounted(() => (tree ? register() : create()));
+        watch(t, register, { flush: 'post' });
+        watch(
+            () => [props.category, props.custom_id, props.label],
+            () => (tree ? register() : create()),
+            {
+                flush: 'post',
+            }
+        );
         watch(
             () => props.params,
             (params) => instance?.setParams(params),
@@ -81,18 +112,28 @@ export const Translate = defineComponent({
         );
         onBeforeUnmount(() => instance?.destroy());
 
-        // MARK-1 on the server-render path. The core's DOM class stamps a host on mount,
-        // which never happens during SSR, so served HTML used to carry no id at all. An
-        // explicit `custom_id` IS the resolved id and is known at render time, so it is
-        // stamped here and the served host agrees with the mounted one. A derived id
-        // needs the subtree tokenized, which only happens on mount (or in a server SDK),
-        // so it is still stamped by the core — the SSR half of that case is a known gap.
-        return () =>
-            h(
-                props.tag,
-                { ref: host, ...(props.custom_id ? { [CONTENT_BLOCK_MARKER_ATTR]: props.custom_id } : {}) },
-                slots.default?.()
-            );
+        return () => {
+            void t.value; // re-render when the catalog or locale changes
+            const slot = slots.default?.() ?? [];
+            const converted = slotToBlockNodes(slot);
+            if (!converted.ok) {
+                mode.owns = true;
+                tree = null;
+                warnUnrenderedBlock(converted.reason);
+                return h(
+                    props.tag,
+                    { ref: host, ...(props.custom_id ? { [CONTENT_BLOCK_MARKER_ATTR]: props.custom_id } : {}) },
+                    slot
+                );
+            }
+            mode.owns = false;
+            tree = converted.nodes;
+            const rendered = renderBlock(converted.nodes, options());
+            return h(props.tag, { ref: host, ...rendered.hostAttrs }, [
+                ...translatedToVNodes(rendered.nodes, converted.elements),
+                ...converted.teleports,
+            ]);
+        };
     },
 });
 

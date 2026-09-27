@@ -4,6 +4,8 @@
 
 ### Added
 
+- **`<Translate>` and `<Phrase>` render their translations on the server.** Both render through the base SDK's DOM-free block renderer, the same way on the server and in the browser, so served HTML carries the request locale's translation and every `<Translate>` host carries its block id; the browser takes the page over with no hydration mismatch. Markup the translation moves keeps its event handlers and refs. A slot holding a component or `v-html` is served as source text, with only an explicit `custom_id` stamped, and translated in the browser after mount.
+
 - **Server rendering through a request scope — `langsys-js-vue/server`.** Each server request renders inside its own scope from the base SDK, with its own locale, catalog view, missed phrases and hydration seed, so concurrent requests in different locales never see each other's text. `provideRequestScope(app, scope)` hands a request's scope to its Vue app, which is how a Nuxt server plugin wires it; `renderInRequestScope(options, render)` renders inside a scope for plain Vite SSR. On the server, `useT()`, `useCurrentLocale()` and `useTranslations()` read the request's scope. The entry is server-only and never reaches a browser bundle.
 
 - **`syncNavigation(router)` — route changes reach components that stay mounted.** A header, nav or footer that survives a navigation, or a child of a route component Vue Router reuses when only a param changes, does not re-render, so its untranslated phrases were never recorded against the new page. `syncNavigation` calls the base SDK's `notifyNavigation()` from `router.afterEach` once the URL has moved, and every `useT()` consumer, `<Translate>` and `<Phrase>` re-enters. `notifyNavigation` is re-exported for other routers.

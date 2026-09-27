@@ -3,7 +3,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, type VNode } from 'vue';
 import { startContractFixture, sleep, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
-import { createLocaleStore, currentlyLoadedLocale, LangsysApp, Phrase, Translate, useT } from './index.js';
+import {
+    createLocaleStore,
+    currentlyLoadedLocale,
+    LangsysApp,
+    LangsysAppAPI,
+    Phrase,
+    Translate,
+    useT,
+} from './index.js';
 
 /**
  * GATE-10 against the contract double: text inside a `data-ls-resolved` subtree is not source,
@@ -144,6 +152,71 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
         await until(() => stored('Opted out E'));
         await sleep(200);
         expect(await stored('Still resolved E')).toBe(false);
+    });
+
+    it('SRV-5: a depth-3 nested block sends each of its blocks exactly once', async () => {
+        // Counted at the transport seam: the double stores registrations idempotently, so
+        // accepted state cannot show a duplicate. Each item the SDK sends is tallied by id.
+        const sent: string[] = [];
+        const original = LangsysAppAPI.createTranslatableItems.bind(LangsysAppAPI);
+        const spy = vi.spyOn(LangsysAppAPI, 'createTranslatableItems').mockImplementation(async (items: unknown) => {
+            for (const item of items as Array<{ custom_id?: string; phrase?: string }>)
+                sent.push(item.custom_id ?? item.phrase ?? '?');
+            return original(items as never);
+        });
+        try {
+            mount(() =>
+                h(Translate, { category: 'UI', custom_id: 'depth-1' }, () => [
+                    h('p', 'Depth one'),
+                    h(Translate, { category: 'UI', custom_id: 'depth-2' }, () => [
+                        h('p', 'Depth two'),
+                        h(Translate, { category: 'UI', custom_id: 'depth-3' }, () => [
+                            h('p', 'Depth three'),
+                            h('p', 'Three b'),
+                        ]),
+                    ]),
+                ])
+            );
+            await vi.advanceTimersByTimeAsync(3_000);
+            await until(async () => (await fx.state()).projects.p1.blocks.some((b) => b.custom_id === 'depth-3'));
+            await sleep(300);
+            await vi.advanceTimersByTimeAsync(3_000);
+            const counts = sent.reduce<Record<string, number>>((c, id) => ((c[id] = (c[id] ?? 0) + 1), c), {});
+            expect(counts['depth-3']).toBe(1);
+            expect(
+                Object.values(counts).every((n) => n === 1),
+                JSON.stringify(counts)
+            ).toBe(true);
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
+    it('MARK-3, outside a resolved region: an app-supplied custom_id the catalog lacks registers under that id', async () => {
+        mount(() =>
+            h('div', [
+                h(Translate, { category: 'UI', custom_id: 'app-block-M' }, () => [h('p', 'M one'), h('p', 'M two')]),
+                single('Source single M'),
+            ])
+        );
+        await vi.advanceTimersByTimeAsync(3_000);
+        await until(async () => (await fx.state()).projects.p1.blocks.some((b) => b.custom_id === 'app-block-M'));
+    });
+
+    it('MARK-3, inside a resolved region: a stamped block registers nothing under its id', async () => {
+        mount(() =>
+            h('div', [
+                h('div', { 'data-ls-resolved': '' }, [
+                    h(Translate, { category: 'UI', custom_id: 'resolved-block-N' }, () => [
+                        h('p', 'N one'),
+                        h('p', 'N two'),
+                    ]),
+                ]),
+                single('Source single N'),
+            ])
+        );
+        await storedBeside('Source single N', 'N one');
+        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('resolved-block-N');
     });
 
     it('identity and translation are untouched: a stamped block keeps its id and a known phrase still translates', async () => {
