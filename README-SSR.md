@@ -10,7 +10,7 @@ Around each request:
 
 1. **Open** a scope for the request's locale: `createRequestScope({ locale, url })`.
 2. **Render** inside it. `useT()`, `useCurrentLocale()` and `useTranslations()` read the scope.
-3. **Hand off** `scope.seed()` in the page payload. On the client, call `LangsysApp.seedCatalog(seed.catalog, seed.locale)` **before the app mounts**, so the first client render matches the served HTML.
+3. **Hand off** `scope.seed()` in the page payload. On the client, call `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)` **before the app mounts**, so the first client render matches the served HTML. The third argument tells the client which blocks and phrases the server already registered, so it never sends them again.
 4. **Close** the scope once the response is sent: `await scope.close()`. With a key that may write and `ssrTokenStrategy: 'server'`, this registers the phrases the render missed; otherwise the browser discovers them after hydration.
 
 The seed must be synchronous. `seedCatalog()` returns nothing and needs no `await`. `LangsysApp.init({ initialTranslations })` is not a substitute: `init()` applies it only after its authorization round trip, and by then the first client render has happened.
@@ -73,11 +73,11 @@ export default defineNuxtPlugin(async (nuxtApp) => {
 
 ```typescript
 // plugins/langsys.client.ts
-import { LangsysApp, refToLocaleSource } from 'langsys-js-vue';
+import { LangsysApp, refToLocaleSource, type RequestSeed } from 'langsys-js-vue';
 
 export default defineNuxtPlugin((nuxtApp) => {
-    const seed = nuxtApp.payload.langsys as { locale: string; catalog: object } | undefined;
-    if (seed) LangsysApp.seedCatalog(seed.catalog, seed.locale); // before the app mounts
+    const seed = nuxtApp.payload.langsys as RequestSeed | undefined;
+    if (seed) LangsysApp.seedCatalog(seed.catalog, seed.locale, seed); // before the app mounts
 
     const config = useRuntimeConfig();
     const locale = useState('locale', () => seed?.locale ?? 'en');
@@ -133,7 +133,7 @@ app.get('*', async (req, res) => {
 import { LangsysApp } from 'langsys-js-vue';
 
 const seed = window.__LANGSYS__; // the seed you serialized into the page
-if (seed) LangsysApp.seedCatalog(seed.catalog, seed.locale);
+if (seed) LangsysApp.seedCatalog(seed.catalog, seed.locale, seed);
 app.mount('#app');
 LangsysApp.init({/* … read-only key … */});
 ```
@@ -177,7 +177,7 @@ Limits:
 
 Decides what happens to the phrases a server render missed when its scope closes:
 
-- `'server'` — registered from the server, when the key may write.
+- `'server'` — registered from the server when the scope closes, when the key may write; the seed marks them, and the client never sends them again.
 - `'auto'` — registered from the server when there are fewer than 5; otherwise left to the browser.
 - `'client'` (default) — left to the browser, which discovers them after hydration.
 

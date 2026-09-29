@@ -11,6 +11,7 @@ import {
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
+import { TRANSLATABLE_ATTRIBUTES } from 'langsys-js-typescript/pure';
 
 /**
  * Server rendering for `<Translate>` and `<Phrase>` (SRV-1, SRV-5, MARK-1) — the Vue half.
@@ -57,7 +58,37 @@ export type SlotConversion =
           /** Teleports: their content leaves the host on both sides, so it is not tokenized and is re-emitted untouched. */
           teleports: VNode[];
       }
-    | { ok: false; reason: 'component' | 'v-html' };
+    | { ok: false; reason: UnrenderedReason };
+
+/**
+ * Why a slot is not rendered through the tree. `component` and `v-html`: there is no markup to read
+ * until it renders. `variable` (VAR-7): Vue compiled a value into its text or a translatable
+ * attribute, and the runtime cannot tell which part is the value, so nothing is registered for it.
+ */
+export type UnrenderedReason = 'component' | 'v-html' | 'variable';
+
+/** Vue's patch flags (runtime-core `PatchFlags`) that mark compiled dynamic content. */
+const PATCH_TEXT = 1;
+const PATCH_PROPS = 1 << 3;
+const PATCH_FULL_PROPS = 1 << 4;
+const TRANSLATABLE = new Set<string>(TRANSLATABLE_ATTRIBUTES);
+
+/** Compiled dynamic text: `{{ name }}` inside the element, or a text vnode that is one. */
+function isDynamicText(vnode: VNode): boolean {
+    return vnode.patchFlag > 0 && (vnode.patchFlag & PATCH_TEXT) !== 0;
+}
+
+/** A translatable attribute (TOK-3) the template binds to a value. */
+function hasDynamicTranslatableAttribute(vnode: VNode): boolean {
+    if (vnode.patchFlag <= 0) return false;
+    if (vnode.patchFlag & PATCH_FULL_PROPS)
+        return Object.keys(vnode.props ?? {}).some((name) => TRANSLATABLE.has(name));
+    if (vnode.patchFlag & PATCH_PROPS)
+        return ((vnode as unknown as { dynamicProps?: string[] | null }).dynamicProps ?? []).some((name) =>
+            TRANSLATABLE.has(name)
+        );
+    return false;
+}
 
 /** Props that are not attributes of the rendered element, or that hold content the tree cannot express. */
 const NOT_ATTRIBUTES = new Set(['key', 'ref', 'ref_for', 'ref_key', 'innerHTML', 'textContent']);
@@ -74,7 +105,7 @@ const NOT_ATTRIBUTES = new Set(['key', 'ref', 'ref_for', 'ref_key', 'innerHTML',
 export function slotToBlockNodes(children: VNodeArrayChildren | undefined): SlotConversion {
     const elements: VNode[] = [];
     const teleports: VNode[] = [];
-    let failure: 'component' | 'v-html' | null = null;
+    let failure: UnrenderedReason | null = null;
 
     const walk = (input: VNodeArrayChildren | string | undefined): BlockNode[] => {
         const out: BlockNode[] = [];
@@ -86,13 +117,21 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             if (Array.isArray(child)) return child.forEach(visit);
             if (!isVNode(child)) return;
             const vnode = child as VNode;
-            if (vnode.type === Comment) return;
-            if (vnode.type === Text) return push({ text: String(vnode.children ?? '') });
+            // A value marker (VAR-3) goes to the core as the tree form; any other comment is dropped.
+            if (vnode.type === Comment) {
+                const text = String(vnode.children ?? '');
+                return /^(ls:[a-z][a-z0-9_]*|\/ls)$/.test(text) ? push({ comment: text }) : undefined;
+            }
+            if (vnode.type === Text) {
+                if (isDynamicText(vnode)) return void (failure = 'variable');
+                return push({ text: String(vnode.children ?? '') });
+            }
             if (vnode.type === Fragment) return (vnode.children as VNodeArrayChildren | null)?.forEach(visit);
             if (vnode.type === Teleport) return void teleports.push(vnode);
             if (typeof vnode.type !== 'string') return void (failure = 'component');
             const props = vnode.props ?? {};
             if ('innerHTML' in props || 'textContent' in props) return void (failure = 'v-html');
+            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) return void (failure = 'variable');
 
             const attrs: Record<string, string | true> = {};
             for (const [name, value] of Object.entries(props)) {

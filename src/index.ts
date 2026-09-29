@@ -100,6 +100,8 @@ export { notifyNavigation, syncNavigation, type NavigationSource } from './navig
 // response body, and the render decision itself, are the core's.
 export { useServerMessage } from './server-message.js';
 export { resolveServerMessages, renderServerMessage, type ServerMessage } from 'langsys-js-typescript';
+// The server's hand-off, for `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)` on the client (SRV-4).
+export type { RequestSeed } from 'langsys-js-typescript';
 
 // Type re-exports — these are framework-agnostic, so consumers can rely on them
 // directly without reaching into `langsys-js-typescript`.

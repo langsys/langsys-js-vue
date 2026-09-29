@@ -4,6 +4,10 @@
 
 ### Added
 
+- **`langsys-js-vue/compiler` — variables stay out of registered text.** A build-time template transform, enabled with one line in the Vite plugin or Nuxt config, rewrites `{{ … }}` inside `<Translate>` and `<Phrase>`, and `` t(`…${x}…`) `` in templates, into `{name}` placeholders and params. `Hello {{ user.firstName }}` registers `Hello {first_name}` once, for every user, and a count selects its plural translation. Without the transform, a block whose compiled template puts a value into its text or a translatable attribute registers nothing.
+
+- **The server-to-client hand-off takes the whole seed.** `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)` tells the client which blocks and phrases the server already registered, so it never sends them again. Under `ssrTokenStrategy: 'server'`, `<Translate>` and `<Phrase>` now register inside the request scope, and the scope sends them after the response.
+
 - **`<Translate>` and `<Phrase>` render their translations on the server.** Both render through the base SDK's DOM-free block renderer, the same way on the server and in the browser, so served HTML carries the request locale's translation and every `<Translate>` host carries its block id; the browser takes the page over with no hydration mismatch. Markup the translation moves keeps its event handlers and refs. A slot holding a component or `v-html` is served as source text, with only an explicit `custom_id` stamped, and translated in the browser after mount.
 
 - **Server rendering through a request scope — `langsys-js-vue/server`.** Each server request renders inside its own scope from the base SDK, with its own locale, catalog view, missed phrases and hydration seed, so concurrent requests in different locales never see each other's text. `provideRequestScope(app, scope)` hands a request's scope to its Vue app, which is how a Nuxt server plugin wires it; `renderInRequestScope(options, render)` renders inside a scope for plain Vite SSR. On the server, `useT()`, `useCurrentLocale()` and `useTranslations()` read the request's scope. The entry is server-only and never reaches a browser bundle.

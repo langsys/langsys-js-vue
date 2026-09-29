@@ -10,7 +10,7 @@ import {
     type ParamPrimitive,
 } from 'langsys-js-typescript';
 import { FALLBACK_ANCESTOR, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
-import { useT } from '../composables.js';
+import { serverScope, useT } from '../composables.js';
 
 /**
  * Props for the Vue `Phrase` component. Mirrors the React/Svelte components —
@@ -63,17 +63,21 @@ export const Phrase = defineComponent({
     setup(props, { slots }) {
         const host = ref<HTMLElement | null>(null);
         const t = useT();
+        /** The request scope this render serves, on a server; null in the browser. */
+        const scope = serverScope();
         const ancestor = inject(FALLBACK_ANCESTOR, null);
         const mode = { owns: false };
         provide(FALLBACK_ANCESTOR, mode);
         let instance: VanillaPhrase | undefined;
         /** The phrase host as the core's tree, from the last render; null when the slot fell back. */
         let tree: BlockNode[] | null = null;
+        /** A slot holding a compiled variable (VAR-7): rendered as written, never registered, no DOM class. */
+        let inert = false;
 
         // Fallback: a slot the tree cannot express (a component, v-html) is handled by the core's
         // DOM class after mount, as before.
         const create = () => {
-            if (!host.value || tree) return;
+            if (!host.value || tree || inert) return;
             instance?.destroy();
             instance = new VanillaPhrase(host.value, { category: props.category, params: props.params });
         };
@@ -106,7 +110,8 @@ export const Phrase = defineComponent({
             const slot = slots.default?.() ?? [];
             const converted = slotToBlockNodes(slot);
             if (!converted.ok) {
-                mode.owns = true;
+                inert = converted.reason === 'variable';
+                mode.owns = !inert;
                 tree = null;
                 warnUnrenderedBlock(converted.reason);
                 return h(props.tag, { ref: host, [PHRASE_MARKER_ATTR]: '' }, slot);
@@ -114,8 +119,10 @@ export const Phrase = defineComponent({
             // The phrase is its host's content: render it as a phrase-marked host, the unit the
             // core translates as one rich phrase, and put that host's translated children here.
             mode.owns = false;
+            inert = false;
             tree = [{ tag: props.tag, attrs: { [PHRASE_MARKER_ATTR]: '' }, children: converted.nodes }];
             const [rendered] = renderBlock(tree, { category: props.category, params: props.params }).nodes;
+            if (scope) registerBlock(tree, { category: props.category, params: props.params });
             const children =
                 rendered && 'tag' in rendered
                     ? // The wrapper is source 0, so the slot's elements start at 1.

@@ -570,6 +570,88 @@ export const MUTATIONS = [
         edits: [{ find: '            if (ancestor?.owns) return;\n', replace: '' }],
         check: vitest('src/resolved-contract.test.ts'),
     },
+    {
+        id: 'M42',
+        rules: 'VAR-6',
+        what: "the transform rewrites each host as Vue reaches it instead of the whole tree at the root, so the server compiler's slot copy keeps the value",
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '    if (root.type !== ROOT) return;',
+                replace: "    if (root.type !== ELEMENT || !HOSTS.has(root.tag ?? '')) return;",
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M43',
+        rules: 'VAR-7',
+        what: 'compiled dynamic text is no longer detected, so a per-user value is registered',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '    return vnode.patchFlag > 0 && (vnode.patchFlag & PATCH_TEXT) !== 0;',
+                replace: '    return vnode.patchFlag < 0 && (vnode.patchFlag & PATCH_TEXT) !== 0;',
+            },
+        ],
+        check: vitest('src/compiler.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M44',
+        rules: 'VAR-2',
+        what: 'the length/size/count rule is dropped, so items.length is named length',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '    if (last > 0 && /^(length|size|count)$/.test(chain[last]!)) {',
+                replace: '    if (last > 0 && /^(never)$/.test(chain[last]!)) {',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M45',
+        rules: 'VAR-6',
+        what: 't() calls in template interpolations are no longer rewritten',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '    if (node.type === INTERPOLATION) fix(node.content as AstNode);',
+                replace: '    if (node.type === -1) fix(node.content as AstNode);',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M46',
+        rules: 'VAR-7',
+        what: 'a translatable attribute bound to a value is no longer detected',
+        file: 'src/block-vnodes.ts',
+        edits: [{ find: '    if (vnode.patchFlag & PATCH_PROPS)\n', replace: '    if (vnode.patchFlag & 0)\n' }],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M47',
+        rules: 'SRV-3, SRV-4',
+        what: 'a block rendered inside a server request scope is not registered there, so the server never collects it',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: '            if (scope) registerBlock(converted.nodes, options());\n', replace: '' }],
+        check: vitest('src/handoff-contract.test.ts'),
+    },
+    {
+        id: 'M48',
+        rules: 'VAR-3 (pass-through)',
+        what: 'a value marker comment in a slot is dropped like any other comment, so the core never sees it',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: 'return /^(ls:[a-z][a-z0-9_]*|\\/ls)$/.test(text) ? push({ comment: text }) : undefined;',
+                replace:
+                    'return /^(ls-never:[a-z][a-z0-9_]*|\\/ls)$/.test(text) ? push({ comment: text }) : undefined;',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
 ];
 
 /**

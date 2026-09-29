@@ -7,6 +7,7 @@ import {
     setRequestScopeStorage,
     type RequestScope,
     type RequestScopeOptions,
+    type RequestSeed,
 } from 'langsys-js-typescript';
 
 /**
@@ -70,4 +71,5 @@ export {
     setRequestScopeStorage,
     type RequestScope,
     type RequestScopeOptions,
+    type RequestSeed,
 };

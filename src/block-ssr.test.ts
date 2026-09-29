@@ -86,6 +86,13 @@ describe('<Translate> through renderBlock', () => {
         expect(served).not.toContain('data-ls-resolved');
     });
 
+    it('a declined block throws nothing, on the server or in the browser (SRV-5)', async () => {
+        const Child = defineComponent({ render: () => h('span', 'Pricing') });
+        const Declined = defineComponent({ render: () => h(Translate, { category: 'UI' }, () => [h(Child)]) });
+        await expect(renderToString(createSSRApp(Declined))).resolves.toContain('<span>Pricing</span>');
+        await expect(serveAndHydrate(() => Declined)).resolves.toMatchObject({ mismatches: [] });
+    });
+
     it('a component in the slot falls back: source served, only an explicit id stamped', async () => {
         const Child = defineComponent({ render: () => h('span', 'Pricing') });
         const { served } = await serveAndHydrate(() =>

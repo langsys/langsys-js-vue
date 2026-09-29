@@ -10,7 +10,7 @@ import {
     type ParamPrimitive,
 } from 'langsys-js-typescript';
 import { FALLBACK_ANCESTOR, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
-import { useT } from '../composables.js';
+import { serverScope, useT } from '../composables.js';
 
 /**
  * Props for the Vue `Translate` component. Mirrors the React/Svelte components
@@ -62,12 +62,16 @@ export const Translate = defineComponent({
     setup(props, { slots }) {
         const host = ref<HTMLElement | null>(null);
         const t = useT();
+        /** The request scope this render serves, on a server; null in the browser. */
+        const scope = serverScope();
         const ancestor = inject(FALLBACK_ANCESTOR, null);
         const mode = { owns: false };
         provide(FALLBACK_ANCESTOR, mode);
         let instance: VanillaTranslate | undefined;
         /** What the last render converted: the tree to register, or null when the slot fell back. */
         let tree: BlockNode[] | null = null;
+        /** A slot holding a compiled variable (VAR-7): rendered as written, never registered, no DOM class. */
+        let inert = false;
 
         const options = () => ({
             category: props.category,
@@ -79,7 +83,7 @@ export const Translate = defineComponent({
         // Fallback: a slot the tree cannot express (a component, v-html) is walked by the core's
         // DOM class after mount, as before.
         const create = () => {
-            if (!host.value || tree) return;
+            if (!host.value || tree || inert) return;
             instance?.destroy();
             instance = new VanillaTranslate(host.value, {
                 category: props.category,
@@ -117,7 +121,8 @@ export const Translate = defineComponent({
             const slot = slots.default?.() ?? [];
             const converted = slotToBlockNodes(slot);
             if (!converted.ok) {
-                mode.owns = true;
+                inert = converted.reason === 'variable';
+                mode.owns = !inert;
                 tree = null;
                 warnUnrenderedBlock(converted.reason);
                 return h(
@@ -127,8 +132,12 @@ export const Translate = defineComponent({
                 );
             }
             mode.owns = false;
+            inert = false;
             tree = converted.nodes;
             const rendered = renderBlock(converted.nodes, options());
+            // On a server, register inside the request scope: the core defers it to `close()` and
+            // marks the block collected in the seed, so the client never sends it again (SRV-3).
+            if (scope) registerBlock(converted.nodes, options());
             return h(props.tag, { ref: host, ...rendered.hostAttrs }, [
                 ...translatedToVNodes(rendered.nodes, converted.elements),
                 ...converted.teleports,

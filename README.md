@@ -366,6 +366,36 @@ When a server has already rendered part of a page in the visitor's locale, mark 
 
 The marker governs DOM content — `<Translate>`, `<Phrase>` and content blocks. `useT()` is outside it by design: a `t()` call's argument is source text your code supplies, not text a server rendered, so it is discovered wherever the component renders. Render server-translated text through `<Translate>` or `<Phrase>`. The project setting that stops discovery on pages loaded in a translated locale covers `t()` too.
 
+## Variables in text
+
+A value from a variable is a `{placeholder}` in the phrase, never part of it: `Hello {name}` is one phrase for every user, and langsys can give it plural and gendered forms. A compiled template hands `<Translate>` the text with the value already in it, so turn on the compiler transform — one line:
+
+```ts
+// vite.config.ts
+import vue from '@vitejs/plugin-vue';
+import { langsysTransform } from 'langsys-js-vue/compiler';
+
+export default { plugins: [vue({ template: { compilerOptions: { nodeTransforms: [langsysTransform] } } })] };
+```
+
+```ts
+// nuxt.config.ts
+import { langsysTransform } from 'langsys-js-vue/compiler';
+
+export default defineNuxtConfig({ vue: { compilerOptions: { nodeTransforms: [langsysTransform] } } });
+```
+
+It rewrites each `{{ … }}` inside `<Translate>` and `<Phrase>`, and each ``t(`…${x}…`)`` in a template, into a placeholder and a param:
+
+```vue
+<Translate category="Cart"><p>You have {{ items.length }} items</p></Translate>
+<!-- registers "You have {items_count} items", params { items_count: items.length } -->
+```
+
+Names come from the expression: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
+
+**Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders as written, and the base SDK notes it once in debug mode. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script.
+
 ## Route changes (Vue Router)
 
 A component that stays mounted across a navigation — a header, a nav, a footer, or a child of a route component that Vue Router reuses when only a param changes — does not re-render, so it never records its untranslated phrases against the new page. Wire the router once so every navigation re-enters the SDK:
@@ -440,7 +470,7 @@ const render = useServerMessage();
 
 ## Server-Side Rendering (Nuxt)
 
-Each server request renders inside its own request scope from the base SDK, so concurrent requests in different locales never see each other's text. The server helpers are in `langsys-js-vue/server`: `provideRequestScope(app, scope)` for Nuxt, `renderInRequestScope(options, render)` for plain Vite SSR. Hand the client `scope.seed()` and call `LangsysApp.seedCatalog(seed.catalog, seed.locale)` **synchronously, before the app mounts**, so the first client render matches the served HTML. `<Translate>` and `<Phrase>` serve their translations too, except a block whose slot holds a component or `v-html`, which is served as source text and translated in the browser.
+Each server request renders inside its own request scope from the base SDK, so concurrent requests in different locales never see each other's text. The server helpers are in `langsys-js-vue/server`: `provideRequestScope(app, scope)` for Nuxt, `renderInRequestScope(options, render)` for plain Vite SSR. Hand the client `scope.seed()` and call `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)` **synchronously, before the app mounts**, so the first client render matches the served HTML. `<Translate>` and `<Phrase>` serve their translations too, except a block whose slot holds a component or `v-html`, which is served as source text and translated in the browser.
 
 📖 **See [README-SSR.md](./README-SSR.md)** for a complete Nuxt walkthrough.
 

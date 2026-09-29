@@ -28,6 +28,11 @@
             "types": "./dist/server.d.ts",
             "import": "./dist/server.mjs",
             "require": "./dist/server.js"
+        },
+        "./compiler": {
+            "types": "./dist/compiler.d.ts",
+            "import": "./dist/compiler.mjs",
+            "require": "./dist/compiler.js"
         }
     },
     "files": [

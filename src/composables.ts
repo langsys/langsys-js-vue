@@ -37,13 +37,12 @@ export const REQUEST_SCOPE_KEY = Symbol.for('langsys-js-vue.requestScope');
 /**
  * On the server, the request scope this render belongs to: the one provided to this Vue app
  * (`provideRequestScope`, the Nuxt path), else the one current in this async context
- * (`scope.run` or `scope.enter`). In the browser, or outside any scope, `null`.
+ * (`scope.run` or `scope.enter`). Outside any scope — every browser render — `null`.
  *
  * The composables read the scope directly, not the core's process-wide signals: on the server
  * those hold whatever the process last loaded, which is another visitor's locale and catalog.
  */
-function serverScope(): RequestScope | null {
-    if (typeof window !== 'undefined') return null;
+export function serverScope(): RequestScope | null {
     const provided = getCurrentInstance() ? inject<RequestScope | null>(REQUEST_SCOPE_KEY, null) : null;
     return provided ?? currentRequestScope() ?? null;
 }

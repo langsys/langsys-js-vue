@@ -130,6 +130,41 @@ describe('the translated copy → vnodes that keep what the tree cannot carry', 
     });
 });
 
+describe('value markers (VAR-3) reach the core', () => {
+    it('the comment pair passes through as the tree form; the span form as an element; other comments are dropped', () => {
+        const result = slotToBlockNodes([
+            h('p', [
+                'Hello ',
+                createCommentVNode('ls:name'),
+                'Ana',
+                createCommentVNode('/ls'),
+                createCommentVNode('an ordinary comment'),
+                ', welcome back',
+            ]),
+            h('p', ['Hi ', h('span', { 'data-ls-param': 'name' }, 'Bo')]),
+        ]);
+        expect(result.ok && result.nodes).toEqual([
+            {
+                tag: 'p',
+                children: [
+                    { text: 'Hello ' },
+                    { comment: 'ls:name' },
+                    { text: 'Ana' },
+                    { comment: '/ls' },
+                    { text: ', welcome back' },
+                ],
+            },
+            {
+                tag: 'p',
+                children: [
+                    { text: 'Hi ' },
+                    { tag: 'span', attrs: { 'data-ls-param': 'name' }, children: [{ text: 'Bo' }] },
+                ],
+            },
+        ]);
+    });
+});
+
 describe('comment nodes', () => {
     it('a Comment vnode on input is skipped; a comment node on output becomes a Comment vnode', () => {
         const result = slotToBlockNodes([h('p', 'kept'), createCommentVNode('marker')]);
