@@ -635,7 +635,7 @@ export const MUTATIONS = [
         rules: 'SRV-3, SRV-4',
         what: 'a block rendered inside a server request scope is not registered there, so the server never collects it',
         file: 'src/components/Translate.ts',
-        edits: [{ find: '            if (scope) registerBlock(converted.nodes, options());\n', replace: '' }],
+        edits: [{ find: '                      registerBlock(nodes, options());\n', replace: '' }],
         check: vitest('src/handoff-contract.test.ts'),
     },
     {
@@ -651,6 +651,22 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M49',
+        rules: 'VAR-6',
+        what: 'a rewritten t() expression keeps the parse Vue made of the original text, so an inlined <script setup> or server build emits broken code',
+        file: 'src/compiler.ts',
+        edits: [{ find: '        exp.ast = undefined;\n', replace: '' }],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M50',
+        rules: 'SRV-1, SRV-7',
+        what: '<Translate> renders over the async-context scope only, so a scope provided to the app (Nuxt) is ignored and the process catalog serves',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: '            const rendered = scope\n', replace: '            const rendered = false\n' }],
+        check: vitest('src/ssr-scope.test.ts'),
     },
 ];
 

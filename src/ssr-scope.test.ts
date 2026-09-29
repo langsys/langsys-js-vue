@@ -244,6 +244,22 @@ describe("SRV-1 — <Translate> and <Phrase> serve the request scope's translati
         expect(it).toMatch(/data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase>Prezzi<\/span>/);
         expect(de).toMatch(/data-ls-resolved="de"><p>Preise<\/p><\/translate><span data-ls-phrase>Preise<\/span>/);
     });
+    it('a scope provided to the app (the Nuxt path), with no async context: each serves its own locale and records its block', async () => {
+        seed(CATALOGS.de, 'de'); // the process-wide state, from another request
+        const Blocks = defineComponent({
+            render: () =>
+                h('div', [
+                    h(Translate, { category: 'UI' }, () => [h('p', 'Pricing')]),
+                    h(Phrase, { category: 'UI' }, () => 'Pricing'),
+                ]),
+        });
+        const scope = await createRequestScope({ locale: 'it', catalog: CATALOGS.it as never });
+        const app = createSSRApp(Blocks);
+        provideRequestScope(app, scope);
+        const html = await renderToString(app);
+        expect(html).toMatch(/data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase>Prezzi<\/span>/);
+        expect(Object.keys(scope.seed().blocks)).toHaveLength(1);
+    });
 });
 
 describe('SRV-2 — what follows the scope on the server', () => {

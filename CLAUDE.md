@@ -56,6 +56,8 @@ test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-
 contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
 _dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a temporary worktree (npm run test:mutations)
 example/                      # Vite playground (npm run dev) — not published
+example/nuxt/                 # Nuxt app in the documented SSR shape; built and served by npm run test:nuxt
+_dev_/nuxt-e2e.mjs            # builds example/nuxt with Nuxt against packed tarballs, serves it against the contract double
 ```
 
 That's the entire surface. Every other concern — HTTP, missing-token registration, persistence, SSR strategies, lookup/interpolation logic — lives in `langsys-js-typescript`.
@@ -149,6 +151,7 @@ WriteGrantSource (the Vue-flavored one — WriteGrant | Ref<string | null | unde
 - `npm run build` — `tsup` → builds ESM + CJS + `.d.ts` to `dist/`.
 - `npm run test` — Vitest (`vitest run`), node environment by default; DOM suites opt into jsdom per file.
 - `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. It runs in a temporary git worktree (HEAD plus the checkout's uncommitted changes, `node_modules` linked) and never writes to the checkout. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale — including after Prettier rewraps a targeted line.
+- `npm run test:nuxt` — packs the core (the build `node_modules/langsys-js-typescript` resolves to, or `LANGSYS_CORE=<dir>`) and this package, installs both with Nuxt into a temporary copy of `example/nuxt`, builds it, and serves it against the contract double: concurrent it/de isolation, a variable registered once as its placeholder, blocks registered from the server, the payload seed marking them `collected`. Needs the network for the Nuxt install (~2 min); not part of `npm test` or CI.
 - `npm run lint` / `npm run format` — Prettier + ESLint (flat config in `eslint.config.mjs`). Not run in CI.
 
 Note: the Vite/Vitest configs use the `.mts` extension (`vite.config.mts`, `vitest.config.mts`) so they load as ESM on Node versions without `require(esm)` support.
@@ -218,6 +221,8 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **On the server, composables never subscribe.** Vue's server renderer never stops a component's effect scope, so a subscription made during a server render is never released; `useSignal` reads once when there is no `window` (`ssr-subscriptions.test.ts`, M33).
 - **On the server, `useT`, `useCurrentLocale` and `useTranslations` read the request scope.** The scope provided to the app first (the Nuxt path, which has no async context), then the one current in the async context. Without the provided-scope read, a Nuxt render would fall back to process state, which is another visitor's (M35, M36). `REQUEST_SCOPE_KEY` is `Symbol.for(...)` because the main and server entries are separate bundles.
 - **Call `scope.enter()` only in the function that renders, never in an async function the renderer awaits** — a helper, or a Nuxt plugin. Entered there, it does not reach the render: interleaved Italian and German requests serve the Italian one German (`ssr-scope.test.ts`, the pinned hazard; M37 moves a working `enter()` into a helper and turns red). Nuxt uses `provideRequestScope`.
+- **Server-side `renderBlock`/`registerBlock` run inside `scope.run()`.** The core's block functions read only the async-context scope; a scope provided to the app (Nuxt) is invisible to them, and the render would serve the process catalog, another visitor's (M50).
+- **A rewritten template expression drops Vue's parse of it (`exp.ast = undefined`).** With `prefixIdentifiers` — an inlined `<script setup>`, any server build — Vue has already parsed the expression and slices the new text at the old offsets, which emits broken code (M49). Function-mode compiles attach no AST, so only the inline and SSR tests catch it.
 - **`useServerMessage` never reads the catalog itself.** The fallback decision is the core's `renderServerMessage()`; the composable only adds the dependency on `useT()` so a mounted list re-renders. Never pass `entry.message` as a key.
 - **`contract-fixture/` and `test/fixtures/server-message-vectors.json` are vendored byte-exact.** Never edit or reformat them (both are in `.prettierignore`); refresh by copying from the core at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).

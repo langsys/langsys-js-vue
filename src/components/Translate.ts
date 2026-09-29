@@ -134,10 +134,17 @@ export const Translate = defineComponent({
             mode.owns = false;
             inert = false;
             tree = converted.nodes;
-            const rendered = renderBlock(converted.nodes, options());
-            // On a server, register inside the request scope: the core defers it to `close()` and
-            // marks the block collected in the seed, so the client never sends it again (SRV-3).
-            if (scope) registerBlock(converted.nodes, options());
+            const nodes = converted.nodes;
+            // On a server, render and register inside the request scope, which may have been provided
+            // to the app rather than entered (Nuxt): the core renders over its catalog, defers the
+            // registration to `close()` and marks the block collected in the seed, so the client
+            // never sends it again (SRV-3).
+            const rendered = scope
+                ? scope.run(() => {
+                      registerBlock(nodes, options());
+                      return renderBlock(nodes, options());
+                  })
+                : renderBlock(nodes, options());
             return h(props.tag, { ref: host, ...rendered.hostAttrs }, [
                 ...translatedToVNodes(rendered.nodes, converted.elements),
                 ...converted.teleports,

@@ -27,7 +27,8 @@ import { LangsysApp, createLocaleStore } from 'langsys-js-vue';
 
 export default defineNitroPlugin(() => {
     const config = useRuntimeConfig();
-    LangsysApp.init({
+    // Nuxt: the app's server plugin awaits this before opening a request's scope.
+    (globalThis as Record<string, unknown>).__langsysReady = LangsysApp.init({
         projectid: config.langsysProjectId,
         key: config.langsysApiKey, // server-only
         UserLocaleStore: createLocaleStore('en'),
@@ -39,7 +40,10 @@ export default defineNitroPlugin(() => {
 
 ```typescript
 // nuxt.config.ts
+import { langsysTransform } from 'langsys-js-vue/compiler';
+
 export default defineNuxtConfig({
+    vue: { compilerOptions: { nodeTransforms: [langsysTransform] } }, // variables in text
     runtimeConfig: {
         langsysProjectId: '', // NUXT_LANGSYS_PROJECT_ID (server-only)
         langsysApiKey: '', // NUXT_LANGSYS_API_KEY (server-only)
@@ -60,13 +64,18 @@ A Nuxt plugin runs inside a render Nuxt has already started, so it cannot wrap t
 import { createRequestScope, installRequestScopes, provideRequestScope } from 'langsys-js-vue/server';
 
 export default defineNuxtPlugin(async (nuxtApp) => {
+    await (globalThis as Record<string, unknown>).__langsysReady;
     installRequestScopes();
-    const event = nuxtApp.ssrContext!.event;
+    const event = useRequestEvent(nuxtApp)!;
+    const url = useRequestURL();
     const locale = resolveLocale(event); // your locale resolution: URL, cookie, Accept-Language
-    const scope = await createRequestScope({ locale, url: getRequestURL(event).href });
+    const scope = await createRequestScope({ locale, url: url.href });
 
     provideRequestScope(nuxtApp.vueApp, scope);
-    nuxtApp.payload.langsys = scope.seed();
+    // The seed is taken after the render, which records the blocks and phrases it carries.
+    nuxtApp.hook('app:rendered', () => {
+        nuxtApp.payload.langsys = scope.seed();
+    });
     event.node.res.on('finish', () => void scope.close());
 });
 ```
@@ -91,6 +100,8 @@ export default defineNuxtPlugin((nuxtApp) => {
     });
 });
 ```
+
+`example/nuxt` is a complete app in this shape, and `npm run test:nuxt` builds it with Nuxt and serves it against a test double of the Langsys API: concurrent Italian and German requests each serve their own translation, a variable in text registers once as its placeholder phrase, and the payload's seed marks what the server sends itself.
 
 Do not call `scope.enter()` from a Nuxt plugin. `enter()` makes a scope current for the rest of the async context it is called in, and a plugin is an async function Nuxt awaits: entered after the plugin's own `await`, it does not isolate the request, and under concurrent requests an Italian page can render German. `provideRequestScope` uses Vue's per-app injection instead, so a request's app can only ever see its own scope. `enter()` is safe only in the function that goes on to render, before the render starts — never in a helper that function awaits, where it sets the scope for the helper alone.
 

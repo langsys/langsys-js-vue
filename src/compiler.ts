@@ -181,6 +181,7 @@ interface AstNode {
     arg?: AstNode & { content?: string };
     exp?: AstNode & { content?: string };
     loc?: unknown;
+    ast?: unknown;
 }
 
 interface TransformContext {
@@ -346,7 +347,12 @@ function matchingParen(source: string, from: number): number {
 function rewriteExpressions(node: AstNode, context: TransformContext | undefined): void {
     const fix = (exp: AstNode | undefined) => {
         if (!exp || exp.type !== SIMPLE_EXPRESSION || typeof exp.content !== 'string') return;
-        exp.content = rewriteTCalls(exp.content, (unnamed) => warnUnnamed(context, unnamed, exp.loc));
+        const rewritten = rewriteTCalls(exp.content, (unnamed) => warnUnnamed(context, unnamed, exp.loc));
+        if (rewritten === exp.content) return;
+        exp.content = rewritten;
+        // With prefixIdentifiers (an inlined <script setup>, a server build) the parser has already
+        // parsed the expression; its offsets index the old text, so drop it and let Vue re-parse.
+        exp.ast = undefined;
     };
     if (node.type === INTERPOLATION) fix(node.content as AstNode);
     for (const p of node.props ?? []) if (p.type === DIRECTIVE) fix(p.exp);

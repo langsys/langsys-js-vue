@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Vue from 'vue';
 import { compile } from '@vue/compiler-dom';
-import { compileTemplate } from 'vue/compiler-sfc';
+import { babelParse, compileScript, compileTemplate, parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import { tokenizeTree } from 'langsys-js-typescript';
 import { langsysTransform, nameVariables, rewriteTCalls } from './compiler.js';
@@ -179,6 +179,25 @@ describe('VAR-6 — t() calls in templates', () => {
     it('leaves plain strings and other functions alone', () => {
         expect(rewriteTCalls('t("plain")')).toBe('t("plain")');
         expect(rewriteTCalls('at(`${x}`)')).toBe('at(`${x}`)');
+    });
+
+    it('in <script setup> with an inlined template — a production build, client and server — the rewrite compiles', () => {
+        const { descriptor } = parse(
+            '<script setup lang="ts">\nconst user = { firstName: "Ana" };\nconst t = (p: string, c?: string, v?: object) => p;\n</script>\n' +
+                "<template><h2>{{ t(`Welcome back, ${user.firstName}`, 'UI') }}</h2></template>"
+        );
+        for (const ssr of [false, true]) {
+            const out = compileScript(descriptor, {
+                id: 'x',
+                inlineTemplate: true,
+                templateOptions: { ssr, compilerOptions: { nodeTransforms: [langsysTransform] } },
+            });
+            expect(
+                () => babelParse(out.content, { sourceType: 'module', plugins: ['typescript'] }),
+                `ssr: ${ssr}`
+            ).not.toThrow();
+            expect(out.content, `ssr: ${ssr}`).toContain('"Welcome back, {first_name}", \'UI\', { "first_name": (');
+        }
     });
 
     it('a template t() renders the translation of the placeholder phrase', async () => {

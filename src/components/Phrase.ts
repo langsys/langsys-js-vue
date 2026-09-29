@@ -121,8 +121,17 @@ export const Phrase = defineComponent({
             mode.owns = false;
             inert = false;
             tree = [{ tag: props.tag, attrs: { [PHRASE_MARKER_ATTR]: '' }, children: converted.nodes }];
-            const [rendered] = renderBlock(tree, { category: props.category, params: props.params }).nodes;
-            if (scope) registerBlock(tree, { category: props.category, params: props.params });
+            const phrase = tree;
+            const opts = { category: props.category, params: props.params };
+            // On a server, inside the request scope, provided or entered (see <Translate>).
+            const [rendered] = (
+                scope
+                    ? scope.run(() => {
+                          registerBlock(phrase, opts);
+                          return renderBlock(phrase, opts);
+                      })
+                    : renderBlock(phrase, opts)
+            ).nodes;
             const children =
                 rendered && 'tag' in rendered
                     ? // The wrapper is source 0, so the slot's elements start at 1.

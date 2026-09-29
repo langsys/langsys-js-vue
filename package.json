@@ -54,7 +54,8 @@
         "format": "prettier --write .",
         "prepublishOnly": "npm run build",
         "release": "./_dev_/publish.sh",
-        "test:mutations": "node _dev_/mutations.mjs"
+        "test:mutations": "node _dev_/mutations.mjs",
+        "test:nuxt": "node _dev_/nuxt-e2e.mjs"
     },
     "keywords": [
         "i18n",
