@@ -55,6 +55,7 @@ src/
 test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
 test/fixtures/var-naming-vectors.json     # vendored byte-exact from langsys-js-typescript — never edit
+test/fixtures/laravel-inertia-failed-form-page.json # vendored byte-exact from langsys-php-laravel (MSG-12) — never edit
 contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
 _dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a temporary worktree (npm run test:mutations)
 example/                      # Vite playground (npm run dev) — not published
@@ -228,7 +229,7 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Server-side `renderBlock`/`registerBlock` run inside `scope.run()`.** The core's block functions read only the async-context scope; a scope provided to the app (Nuxt) is invisible to them, and the render would serve the process catalog, another visitor's (M50).
 - **A rewritten template expression drops Vue's parse of it (`exp.ast = undefined`).** With `prefixIdentifiers` — an inlined `<script setup>`, any server build — Vue has already parsed the expression and slices the new text at the old offsets, which emits broken code (M49). Function-mode compiles attach no AST, so only the inline and SSR tests catch it.
 - **`useServerMessage` never reads the catalog itself.** The fallback decision is the core's `renderServerMessage()`; the composable only adds the dependency on `useT()` so a mounted list re-renders. Never pass `entry.message` as a key.
-- **`contract-fixture/`, `test/fixtures/server-message-vectors.json` and `test/fixtures/var-naming-vectors.json` are vendored byte-exact.** Never edit or reformat them (both are in `.prettierignore`); refresh by copying from the core at a cited commit and re-deriving the tree id and blob.
+- **`contract-fixture/` and the files in `test/fixtures/` are vendored byte-exact.** Never edit or reformat them (all are in `.prettierignore`); refresh by copying from the source repo at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads.
 

@@ -1,0 +1,32 @@
+{
+    "component": "Cards/New",
+    "props": {
+        "errors": {
+            "cc_number": "The cc number field is required.",
+            "amount": "The amount field must not be greater than 100."
+        },
+        "langsys_errors": [
+            {
+                "field": "cc_number",
+                "code": "required",
+                "message": "The cc number field is required.",
+                "template": "The cc number field is required."
+            },
+            {
+                "field": "amount",
+                "code": "max",
+                "message": "The amount field must not be greater than 100.",
+                "template": "The amount field must not be greater than {max}.",
+                "params": {
+                    "max": 100
+                }
+            }
+        ]
+    },
+    "url": "/cards/new",
+    "version": "",
+    "sharedProps": [
+        "errors",
+        "langsys_errors"
+    ]
+}

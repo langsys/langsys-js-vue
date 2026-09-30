@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -18,6 +19,9 @@ import { LangsysApp, resolveServerMessages, useServerMessage, type ServerMessage
  * MSG-12's page half: an Inertia page receives Laravel's own error body, with the entries the
  * server binding attached under `langsys_errors`, resolves them by that key with the core's
  * `resolveServerMessages()`, renders them through this helper, and leaves the body untouched.
+ * The page object a failed form redirects to is Laravel's own, written by its
+ * `InertiaPageFixtureTest` at langsys-php-laravel c5d14051 with Inertia's middleware installed, vendored byte-exact
+ * (`test/fixtures/laravel-inertia-failed-form-page.json`, blob afcc37bf).
  */
 
 interface RenderVector {
@@ -152,5 +156,57 @@ describe('MSG-12 — the page half of an Inertia hand-off', () => {
         expect(() => resolveServerMessages(row.body, {} as never)).toThrow(TypeError);
         for (const r of VECTORS.resolve)
             expect(resolveServerMessages(r.body, r.options as never), r.id).toEqual(r.expected);
+    });
+});
+
+describe('MSG-12 — the page a failed Laravel form redirects to', () => {
+    const raw = readFileSync(join(process.cwd(), 'test/fixtures/laravel-inertia-failed-form-page.json'));
+    const fixture = JSON.parse(raw.toString('utf8')) as { props: Record<string, unknown> };
+    const Page = defineComponent({
+        props: { props: { type: Object, required: true } },
+        setup(p) {
+            const render = useServerMessage();
+            return () =>
+                h(
+                    'ul',
+                    resolveServerMessages(p.props, { key: 'langsys_errors' }).map((e) => h('li', render.value(e)))
+                );
+        },
+    });
+    const ES = {
+        ...EMPTY,
+        Errors: {
+            'The cc number field is required.': 'El número de tarjeta es obligatorio.',
+            'The amount field must not be greater than {max}.': 'El importe no puede ser mayor que {max}.',
+        },
+    };
+
+    it('control: the fixture is the vendored blob, carrying Inertia errors beside langsys_errors', () => {
+        const blob = createHash('sha1').update(`blob ${raw.length}\0`).update(raw).digest('hex');
+        expect(blob).toBe('afcc37bf7995dc528cd536e5ad238f387868b512');
+        expect(Object.keys(fixture.props).sort()).toEqual(['errors', 'langsys_errors']);
+    });
+
+    it("control: Inertia's own errors prop holds no entries, so the configured key is what finds them", () => {
+        expect(resolveServerMessages(fixture.props, { key: 'errors' })).toEqual([]);
+        expect(resolveServerMessages(fixture.props, { key: 'langsys_errors' })).toHaveLength(2);
+    });
+
+    it('the page renders the entries in its locale, params filled, and leaves the props untouched', () => {
+        const props = structuredClone(fixture.props);
+        seed(ES, 'es');
+        expect(texts(mount(Page, { props }))).toEqual([
+            'El número de tarjeta es obligatorio.',
+            'El importe no puede ser mayor que 100.',
+        ]);
+        expect(props).toEqual(fixture.props);
+    });
+
+    it('control: with no catalog, the page renders the messages Laravel filled', () => {
+        seed(EMPTY, 'en');
+        expect(texts(mount(Page, { props: structuredClone(fixture.props) }))).toEqual([
+            'The cc number field is required.',
+            'The amount field must not be greater than 100.',
+        ]);
     });
 });

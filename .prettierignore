@@ -19,3 +19,6 @@ contract-fixture/
 test/fixtures/server-message-vectors.json
 test/fixtures/snapshot-vectors.json
 test/fixtures/var-naming-vectors.json
+
+# Vendored byte-exact from langsys-php-laravel; cited by blob
+test/fixtures/laravel-inertia-failed-form-page.json
