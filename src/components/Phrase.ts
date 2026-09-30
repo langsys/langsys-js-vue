@@ -6,10 +6,11 @@ import {
     registerBlock,
     renderBlock,
     warnUnrenderedBlock,
+    warnUnregistered,
     type BlockNode,
     type ParamPrimitive,
 } from 'langsys-js-typescript';
-import { FALLBACK_ANCESTOR, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
+import { FALLBACK_ANCESTOR, UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
 import { serverScope, useT } from '../composables.js';
 
 /**
@@ -71,13 +72,13 @@ export const Phrase = defineComponent({
         let instance: VanillaPhrase | undefined;
         /** The phrase host as the core's tree, from the last render; null when the slot fell back. */
         let tree: BlockNode[] | null = null;
-        /** A slot holding a compiled variable (VAR-7): rendered as written, never registered, no DOM class. */
-        let inert = false;
+        /** A slot holding a compiled variable (VAR-7): rendered from the catalog, never registered, no DOM class. */
+        let unregistered = false;
 
         // Fallback: a slot the tree cannot express (a component, v-html) is handled by the core's
         // DOM class after mount, as before.
         const create = () => {
-            if (!host.value || tree || inert) return;
+            if (!host.value || tree || unregistered) return;
             instance?.destroy();
             instance = new VanillaPhrase(host.value, { category: props.category, params: props.params });
         };
@@ -110,8 +111,8 @@ export const Phrase = defineComponent({
             const slot = slots.default?.() ?? [];
             const converted = slotToBlockNodes(slot);
             if (!converted.ok) {
-                inert = converted.reason === 'variable';
-                mode.owns = !inert;
+                unregistered = false;
+                mode.owns = true;
                 tree = null;
                 warnUnrenderedBlock(converted.reason);
                 return h(props.tag, { ref: host, [PHRASE_MARKER_ATTR]: '' }, slot);
@@ -119,15 +120,18 @@ export const Phrase = defineComponent({
             // The phrase is its host's content: render it as a phrase-marked host, the unit the
             // core translates as one rich phrase, and put that host's translated children here.
             mode.owns = false;
-            inert = false;
-            tree = [{ tag: props.tag, attrs: { [PHRASE_MARKER_ATTR]: '' }, children: converted.nodes }];
-            const phrase = tree;
+            const phrase: BlockNode[] = [
+                { tag: props.tag, attrs: { [PHRASE_MARKER_ATTR]: '' }, children: converted.nodes },
+            ];
+            unregistered = converted.variable;
+            if (unregistered) warnUnregistered(UNREGISTERED_REASON);
+            tree = unregistered ? null : phrase;
             const opts = { category: props.category, params: props.params };
             // On a server, inside the request scope, provided or entered (see <Translate>).
             const [rendered] = (
                 scope
                     ? scope.run(() => {
-                          registerBlock(phrase, opts);
+                          if (!unregistered) registerBlock(phrase, opts);
                           return renderBlock(phrase, opts);
                       })
                     : renderBlock(phrase, opts)

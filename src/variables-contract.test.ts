@@ -5,6 +5,7 @@ import * as Vue from 'vue';
 import { compile } from '@vue/compiler-dom';
 import { logger } from 'langsys-js-typescript';
 import { startContractFixture, sleep, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { UNREGISTERED_REASON } from './block-vnodes.js';
 import { langsysTransform } from './compiler.js';
 import { createLocaleStore, currentlyLoadedLocale, LangsysApp, Translate } from './index.js';
 
@@ -92,7 +93,7 @@ describe('a variable inside <Translate>, for two users', () => {
         mountFor(tpl, 'Bo', false);
         const stored = await flushedBeside('Static B');
         expect(stored.filter((p) => p.startsWith('See you soon'))).toEqual([]);
-        expect(log.mock.calls.filter((c) => String(c[0]).includes('(variable)'))).toHaveLength(1);
+        expect(log.mock.calls.filter((c) => String(c[0]).includes(`(${UNREGISTERED_REASON})`))).toHaveLength(1);
         log.mockRestore();
     });
 });

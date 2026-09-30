@@ -19,7 +19,7 @@ src/
     server-message.ts         # useServerMessage() — reactive wrapper over core renderServerMessage() (MSG-5)
     server.ts                 # `langsys-js-vue/server` (server-only entry): request scopes for SSR (SRV-7)
     block-vnodes.ts           # slot vnodes ↔ the core's block tree, for <Translate>/<Phrase> (SRV-1, MARK-1); the VAR-7 guard
-    compiler.ts               # `langsys-js-vue/compiler` (build-time): the template transform and VAR-2 naming (VAR-6)
+    compiler.ts               # `langsys-js-vue/compiler` (build-time): the template transform; expressions → the core's naming shapes (VAR-6, VAR-2)
     components/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
         Phrase.ts             # wrapper around the vanilla Phrase rich-text handler
@@ -48,11 +48,13 @@ src/
     ssr-subscriptions.test.ts # server renders leave no subscription on the core's signals
     block-vnodes.test.ts      # slot → tree mapping, fallbacks, re-attachment through `source`
     block-ssr.test.ts         # <Translate>/<Phrase> served translated and stamped; hydration parity
-    compiler.test.ts          # VAR-2 naming, the transform on all four compile paths, t() rewriting, VAR-7 detection
+    compiler.test.ts          # VAR-2 shared naming vectors, the transform on all four compile paths, t() rewriting, VAR-7
+    locale-headers.test.ts    # FRM-6: localeHeaders() re-exported and forwarded; the scope's locale inside a scope
     variables-contract.test.ts # VAR-1/6/7 against the contract double: two users, with and without the transform (own process)
     handoff-contract.test.ts  # seedCatalog(…, seed): a server-collected block is never sent by the client (own process)
 test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
+test/fixtures/var-naming-vectors.json     # vendored byte-exact from langsys-js-typescript — never edit
 contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
 _dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a temporary worktree (npm run test:mutations)
 example/                      # Vite playground (npm run dev) — not published
@@ -113,6 +115,7 @@ canonicalizeLocale(locale)    // re-exported locale normalizer; canonical form i
 // Route changes (HINT-13) and server messages (MSG-5)
 syncNavigation(router)        // Vue Router afterEach → notifyNavigation(); returns the remover
 notifyNavigation()            // the core entry point, for any other router
+localeHeaders()               // core, re-exported (FRM-6): { 'Accept-Language': <locale> } for the app's own API calls
 useServerMessage(category?)   -> Readonly<Ref<(entry: ServerMessage) => string>>  // core renderServerMessage, reactive
 resolveServerMessages(body, { key } | { resolver }, pieces?), renderServerMessage(entry, category?)  // core, re-exported; resolve throws with neither
 
@@ -124,7 +127,7 @@ createRequestScope, currentRequestScope, setRequestScopeStorage, clearSharedCata
 
 // Build-time — `langsys-js-vue/compiler` (VAR-6)
 langsysTransform              // compilerOptions.nodeTransforms entry: {{ x }} in <Translate>/<Phrase>, t(`…${x}`) → placeholders + params
-nameVariables(exprs, taken?)  // VAR-2 naming; langsysCompilerOptions(opts?) adds the transform to an options object
+nameVariables(exprs, taken?)  // VAR-2 names via the core's derivePlaceholderNames; expressionShape(expr); langsysCompilerOptions(opts?)
 
 // Components
 <Translate category? custom_id? label? tag? />       // class falls through
@@ -213,7 +216,8 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Re-attach translated elements through `source`; never rebuild them from the translated copy.** The core's tree cannot carry handlers, refs or directives, and a translation can move markup (M38).
 - **A block nested under a DOM-class fallback does not register itself.** The ancestor's DOM class registers every nested marked host on its own walk (MARK-4); both registering sends the block twice (SRV-5, M41). `FALLBACK_ANCESTOR` carries that down.
 - **The template transform runs once, on the ROOT node.** Vue runs user `nodeTransforms` after its own, and its server compiler copies a component's slot children when it reaches the component; a per-element rewrite leaves the value in that copy, which is what `<Translate>` renders on the server (M42).
-- **Never register a value Vue marks dynamic** (VAR-7). A slot whose compiled vnodes carry `PatchFlags.TEXT`, or `PROPS`/`FULL_PROPS` on a translatable attribute, falls back with reason `variable`: rendered as written, no DOM class, no registration (M43, M46).
+- **Never register a value Vue marks dynamic** (VAR-7). A slot whose compiled vnodes carry `PatchFlags.TEXT`, or `PROPS`/`FULL_PROPS` on a translatable attribute, converts with `variable: true`: rendered from the catalog through `renderBlock`, no DOM class, no registration on the server or the client, and the core's `warnUnregistered(UNREGISTERED_REASON)` (M43, M46, M51, M52). It is not a fallback: `warnUnrenderedBlock` is for component and `v-html` slots only.
+- **Placeholder names are the core's `derivePlaceholderNames()`.** `compiler.ts` only maps a template expression onto the core's `ExpressionShape`; never name values here. The shared `var-naming-vectors.json` runs through both halves (M44).
 - **Inside a server request scope, the components register during render.** The core defers it to `close()` and marks the block `collected` in the seed; the client, seeded with `seedCatalog(catalog, locale, seed)`, never sends it again (M47). `onMounted` never runs on a server.
 - **Bindings write no console output.** A block that falls back calls the core's `warnUnrenderedBlock(reason)`.
 - **Components hand the core the host that is in the page.** `registerBlock(tree, { host })` walks up from `host.parentElement` to find `data-ls-resolved`; without the host it sees no ancestor and registers already-translated text (M24, M25).
@@ -224,7 +228,7 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Server-side `renderBlock`/`registerBlock` run inside `scope.run()`.** The core's block functions read only the async-context scope; a scope provided to the app (Nuxt) is invisible to them, and the render would serve the process catalog, another visitor's (M50).
 - **A rewritten template expression drops Vue's parse of it (`exp.ast = undefined`).** With `prefixIdentifiers` — an inlined `<script setup>`, any server build — Vue has already parsed the expression and slices the new text at the old offsets, which emits broken code (M49). Function-mode compiles attach no AST, so only the inline and SSR tests catch it.
 - **`useServerMessage` never reads the catalog itself.** The fallback decision is the core's `renderServerMessage()`; the composable only adds the dependency on `useT()` so a mounted list re-renders. Never pass `entry.message` as a key.
-- **`contract-fixture/` and `test/fixtures/server-message-vectors.json` are vendored byte-exact.** Never edit or reformat them (both are in `.prettierignore`); refresh by copying from the core at a cited commit and re-deriving the tree id and blob.
+- **`contract-fixture/`, `test/fixtures/server-message-vectors.json` and `test/fixtures/var-naming-vectors.json` are vendored byte-exact.** Never edit or reformat them (both are in `.prettierignore`); refresh by copying from the core at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads.
 

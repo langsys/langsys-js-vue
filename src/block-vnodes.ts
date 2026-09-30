@@ -57,15 +57,23 @@ export type SlotConversion =
           elements: VNode[];
           /** Teleports: their content leaves the host on both sides, so it is not tokenized and is re-emitted untouched. */
           teleports: VNode[];
+          /**
+           * Vue compiled a value into the slot's text or a translatable attribute (VAR-7). The runtime
+           * cannot tell which part is the value, so the block renders from the catalog and registers
+           * nothing.
+           */
+          variable: boolean;
       }
     | { ok: false; reason: UnrenderedReason };
 
+/** Why a slot is not rendered through the tree: a component or `v-html` has no markup to read until it renders. */
+export type UnrenderedReason = 'component' | 'v-html';
+
 /**
- * Why a slot is not rendered through the tree. `component` and `v-html`: there is no markup to read
- * until it renders. `variable` (VAR-7): Vue compiled a value into its text or a translatable
- * attribute, and the runtime cannot tell which part is the value, so nothing is registered for it.
+ * The reason a block holding a compiled variable names to the core's `warnUnregistered()`: the
+ * transform that would have named the value.
  */
-export type UnrenderedReason = 'component' | 'v-html' | 'variable';
+export const UNREGISTERED_REASON = 'enable langsysTransform from langsys-js-vue/compiler';
 
 /** Vue's patch flags (runtime-core `PatchFlags`) that mark compiled dynamic content. */
 const PATCH_TEXT = 1;
@@ -106,6 +114,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
     const elements: VNode[] = [];
     const teleports: VNode[] = [];
     let failure: UnrenderedReason | null = null;
+    let variable = false;
 
     const walk = (input: VNodeArrayChildren | string | undefined): BlockNode[] => {
         const out: BlockNode[] = [];
@@ -123,7 +132,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
                 return /^(ls:[a-z][a-z0-9_]*|\/ls)$/.test(text) ? push({ comment: text }) : undefined;
             }
             if (vnode.type === Text) {
-                if (isDynamicText(vnode)) return void (failure = 'variable');
+                if (isDynamicText(vnode)) variable = true;
                 return push({ text: String(vnode.children ?? '') });
             }
             if (vnode.type === Fragment) return (vnode.children as VNodeArrayChildren | null)?.forEach(visit);
@@ -131,7 +140,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             if (typeof vnode.type !== 'string') return void (failure = 'component');
             const props = vnode.props ?? {};
             if ('innerHTML' in props || 'textContent' in props) return void (failure = 'v-html');
-            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) return void (failure = 'variable');
+            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) variable = true;
 
             const attrs: Record<string, string | true> = {};
             for (const [name, value] of Object.entries(props)) {
@@ -153,7 +162,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
     };
 
     const nodes = walk(children);
-    return failure ? { ok: false, reason: failure } : { ok: true, nodes, elements, teleports };
+    return failure ? { ok: false, reason: failure } : { ok: true, nodes, elements, teleports, variable };
 }
 
 /** Vue's shape flags for a vnode's children (runtime-core `ShapeFlags`). */

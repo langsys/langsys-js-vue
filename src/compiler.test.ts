@@ -4,8 +4,13 @@ import { compile } from '@vue/compiler-dom';
 import { babelParse, compileScript, compileTemplate, parse } from 'vue/compiler-sfc';
 import { renderToString } from 'vue/server-renderer';
 import { tokenizeTree } from 'langsys-js-typescript';
-import { langsysTransform, nameVariables, rewriteTCalls } from './compiler.js';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { derivePlaceholderNames } from 'langsys-js-typescript/pure';
+import { expressionShape, langsysTransform, nameVariables, rewriteTCalls } from './compiler.js';
 import { LangsysApp, Phrase, Translate, useT } from './index.js';
+import { createRequestScope } from './server.js';
 import { slotToBlockNodes } from './block-vnodes.js';
 
 /**
@@ -49,7 +54,11 @@ async function registers(template: string, data: Record<string, unknown>, transf
         setup(_, { slots }) {
             return () => {
                 const converted = slotToBlockNodes(slots.default?.() ?? []);
-                seen = converted.ok ? tokenizeTree(converted.nodes).tokens.join(' | ') : `(${converted.reason})`;
+                seen = !converted.ok
+                    ? `(${converted.reason})`
+                    : converted.variable
+                      ? '(variable)'
+                      : tokenizeTree(converted.nodes).tokens.join(' | ');
                 return Vue.h('i');
             };
         },
@@ -60,6 +69,41 @@ async function registers(template: string, data: Record<string, unknown>, transf
     await renderToString(app);
     return seen;
 }
+
+interface NamingCase {
+    id: string;
+    expressions: Array<{ source: string; shape: unknown; explicit?: string }>;
+    names: string[];
+}
+const VECTORS_RAW = readFileSync(join(process.cwd(), 'test/fixtures/var-naming-vectors.json'));
+const NAMING = JSON.parse(VECTORS_RAW.toString('utf8')) as { cases: NamingCase[] };
+
+describe('VAR-2 — the shared naming vectors (var-naming-vectors.json, vendored byte-exact)', () => {
+    it('control: the file is the vendored blob and carries cases', () => {
+        const blob = createHash('sha1').update(`blob ${VECTORS_RAW.length}\0`).update(VECTORS_RAW).digest('hex');
+        expect(blob).toBe('a4b61ed248118338269ee870c920ee2c77549edf');
+        expect(NAMING.cases.length).toBe(27);
+    });
+
+    it.each(NAMING.cases.map((c) => [c.id, c] as const))('%s: each source maps onto its shape', (_, c) => {
+        for (const e of c.expressions) expect(expressionShape(e.source), e.source).toEqual(e.shape);
+    });
+
+    it.each(NAMING.cases.map((c) => [c.id, c] as const))('%s: the names, through this binding', (_, c) => {
+        const derived = derivePlaceholderNames(
+            c.expressions.map((e) => ({
+                shape: expressionShape(e.source),
+                ...(e.explicit ? { explicit: e.explicit } : {}),
+            }))
+        );
+        expect(derived).toEqual(c.names);
+        if (c.expressions.some((e) => e.explicit)) return; // a template has no per-expression explicit name
+        const byExpression = new Map(
+            nameVariables(c.expressions.map((e) => e.source)).map((v) => [v.expression, v.name])
+        );
+        expect(c.expressions.map((e) => byExpression.get(e.source))).toEqual(c.names);
+    });
+});
 
 describe('VAR-2 — placeholder names come from the source expression', () => {
     it.each([
@@ -116,6 +160,21 @@ describe('VAR-6 — interpolations inside <Translate> and <Phrase> become placeh
         expect(
             await registers('<Translate category="UI"><p :class="c">Static</p></Translate>', { c: 'x' }, false)
         ).toBe('Static');
+    });
+
+    it('without the transform, a variable block still renders from the catalog, and a scope records nothing for it', async () => {
+        seed({ ...IT, UI: { ...IT.UI, 'Goodbye Ana': 'Arrivederci Ana' } }, 'it');
+        const tpl = '<Translate category="UI"><p>Goodbye {{ name }}</p></Translate>';
+        expect(await serve(tpl, { name: 'Ana' }, false)).toContain('<p>Arrivederci Ana</p>');
+        const recorded = async (transform: boolean) => {
+            const scope = await createRequestScope({ locale: 'it', catalog: IT as never });
+            await scope.run(() => serve(tpl, { name: 'Bo' }, transform));
+            // The seed keeps every rendered block's source for the client's re-render; what the scope
+            // would send is its misses.
+            return scope.misses().length;
+        };
+        expect(await recorded(true), 'control: with the transform, Goodbye {name} is recorded').toBeGreaterThan(0);
+        expect(await recorded(false)).toBe(0);
     });
 
     it('with it, two users register the one phrase, carrying the placeholder', async () => {

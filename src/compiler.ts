@@ -24,8 +24,11 @@
  * `v-for`, `v-html`, a component or a `<slot>` inside the block — is left as written; the runtime
  * then registers nothing for it (VAR-7).
  *
- * Build-time only: this module has no runtime dependencies and never reaches a browser bundle.
+ * Build-time only: this module never reaches a browser bundle. Placeholder names are the core's
+ * (`derivePlaceholderNames()` from `langsys-js-typescript/pure`), so every SDK names a value alike.
  */
+
+import { derivePlaceholderNames, type ExpressionShape, type NamedExpression } from 'langsys-js-typescript/pure';
 
 /** The compiler's node types this transform reads (`@vue/compiler-core` `NodeTypes`). */
 const ROOT = 0;
@@ -38,26 +41,11 @@ const COMPONENT = 1;
 
 const HOSTS = new Set(['Translate', 'Phrase']);
 const BLOCKING_DIRECTIVES = new Set(['if', 'else', 'else-if', 'for', 'html', 'text', 'slot']);
-/** `m<N>o` / `m<N>c` are the `<Phrase>` markup tokens (VAR-2). */
-const RESERVED = /^m\d+[oc]$/;
 const IDENT = '[A-Za-z_$][\\w$]*';
 
 // ---------------------------------------------------------------------------------------------
-// VAR-2 naming
+// VAR-2 naming: this binding maps a template expression onto the core's shape; the core names it
 // ---------------------------------------------------------------------------------------------
-
-/** `firstName` → `first_name`; null when the result is not a valid name. */
-function snake(segment: string): string | null {
-    const name = segment
-        .replace(/^[$_]+/, '')
-        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-        .toLowerCase()
-        .replace(/[^a-z0-9_]+/g, '_')
-        .replace(/_+/g, '_')
-        .replace(/_$/, '');
-    return /^[a-z][a-z0-9_]*$/.test(name) ? name : null;
-}
 
 /** Split `a` at top-level commas; null when brackets do not balance. */
 function topLevelArgs(src: string): string[] | null {
@@ -87,41 +75,26 @@ function topLevelArgs(src: string): string[] | null {
 }
 
 /**
- * The member chain a name is read from: an identifier or a dotted chain, or the argument of a
- * one-argument call. Null for anything else (VAR-2's last row).
+ * A template expression as the shape the core names (`ExpressionShape`): an identifier, a member
+ * chain (optional chaining read as plain), a call with its arguments, or anything else.
  */
-function chainOf(expression: string): string[] | null {
+export function expressionShape(expression: string): ExpressionShape {
     const expr = expression.trim();
     const chain = new RegExp(`^${IDENT}(?:\\s*\\??\\.\\s*${IDENT})*$`);
-    if (chain.test(expr)) return expr.split(/\s*\??\.\s*/);
-    const call = new RegExp(`^${IDENT}(?:\\s*\\??\\.\\s*${IDENT})*\\s*\\(([\\s\\S]*)\\)$`).exec(expr);
+    if (chain.test(expr)) {
+        const segments = expr.split(/\s*\??\.\s*/);
+        return segments.length === 1 ? { identifier: segments[0]! } : { member: segments };
+    }
+    const call = new RegExp(`^(${IDENT}(?:\\s*\\??\\.\\s*${IDENT})*)\\s*\\(([\\s\\S]*)\\)$`).exec(expr);
     if (call) {
-        const args = topLevelArgs(call[1]!);
-        if (args && args.length === 1 && args[0]) return chainOf(args[0]);
+        const args = topLevelArgs(call[2]!);
+        if (args)
+            return { call: { callee: call[1]!.replace(/\s+/g, ''), args: args.filter(Boolean).map(expressionShape) } };
     }
-    return null;
-}
-
-/** A name for one expression, and the segment before the one it was read from (for collisions). */
-function baseName(expression: string): { name: string; prefix: string | null } | null {
-    const chain = chainOf(expression);
-    if (!chain) return null;
-    const last = chain.length - 1;
-    const at = (i: number) => (i >= 0 ? snake(chain[i]!) : null);
-    let name: string | null;
-    let from: number;
-    if (last > 0 && /^(length|size|count)$/.test(chain[last]!)) {
-        const prev = at(last - 1);
-        name = prev ? `${prev}_count` : null;
-        from = last - 1;
-    } else if (last > 0 && /^(value|current)$/.test(chain[last]!)) {
-        name = at(last - 1);
-        from = last - 1;
-    } else {
-        name = at(last);
-        from = last;
-    }
-    return name ? { name, prefix: at(from - 1) } : null;
+    if (expr.startsWith('`')) return { other: 'template' };
+    if (/\?[^.?]*:/.test(expr)) return { other: 'conditional' };
+    if (/\[/.test(expr)) return { other: 'computed' };
+    return { other: 'binary' };
 }
 
 export interface NamedVariable {
@@ -132,37 +105,24 @@ export interface NamedVariable {
 }
 
 /**
- * Name the variables of one phrase, per VAR-2: the same expression twice is one variable; names
- * already `taken` (a developer's explicit `%name%`) are avoided.
+ * Name the variables of one phrase, per VAR-2, with the core's `derivePlaceholderNames()`: the
+ * same expression twice is one variable; names already `taken` (a developer's explicit `%name%`)
+ * are avoided.
  */
 export function nameVariables(expressions: readonly string[], taken: Iterable<string> = []): NamedVariable[] {
     const unique = [...new Set(expressions.map((e) => e.trim()))];
-    const derived = unique.map((expression) => ({ expression, base: baseName(expression) }));
-    const counts = new Map<string, number>();
-    for (const d of derived) if (d.base) counts.set(d.base.name, (counts.get(d.base.name) ?? 0) + 1);
-
-    const named = derived.map(({ expression, base }) => {
-        if (!base) return { expression, name: 'value', unnamed: true };
-        const collides = (counts.get(base.name) ?? 0) > 1;
+    const explicit: NamedExpression[] = [...taken].map((name) => ({ shape: { other: 'explicit' }, explicit: name }));
+    const shapes = unique.map(expressionShape);
+    const names = derivePlaceholderNames([...explicit, ...shapes.map((shape) => ({ shape }))]).slice(explicit.length);
+    return unique.map((expression, i) => {
+        const shape = shapes[i]!;
+        const alone = derivePlaceholderNames([{ shape }])[0];
         return {
             expression,
-            name: collides && base.prefix ? `${base.prefix}_${base.name}` : base.name,
-            unnamed: false,
+            name: names[i]!,
+            unnamed: alone === 'value' && !('identifier' in shape && shape.identifier === 'value'),
         };
     });
-
-    const used = new Set<string>(taken);
-    for (const variable of named) {
-        let name = variable.name;
-        if (used.has(name) || RESERVED.test(name)) {
-            let n = 2;
-            while (used.has(`${name}_${n}`)) n++;
-            name = `${name}_${n}`;
-        }
-        used.add(name);
-        variable.name = name;
-    }
-    return named;
 }
 
 // ---------------------------------------------------------------------------------------------

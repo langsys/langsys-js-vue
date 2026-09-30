@@ -4,7 +4,9 @@
 
 ### Added
 
-- **`langsys-js-vue/compiler` — variables stay out of registered text.** A build-time template transform, enabled with one line in the Vite plugin or Nuxt config, rewrites `{{ … }}` inside `<Translate>` and `<Phrase>`, and `` t(`…${x}…`) `` in templates, into `{name}` placeholders and params. `Hello {{ user.firstName }}` registers `Hello {first_name}` once, for every user, and a count selects its plural translation. Without the transform, a block whose compiled template puts a value into its text or a translatable attribute registers nothing. The transform works in every build shape Vue has, including `<script setup>` with the template inlined (production builds) and server builds.
+- **`langsys-js-vue/compiler` — variables stay out of registered text.** A build-time template transform, enabled with one line in the Vite plugin or Nuxt config, rewrites `{{ … }}` inside `<Translate>` and `<Phrase>`, and `` t(`…${x}…`) `` in templates, into `{name}` placeholders and params. `Hello {{ user.firstName }}` registers `Hello {first_name}` once, for every user, and a count selects its plural translation. Without the transform, a block whose compiled template puts a value into its text or a translatable attribute renders from the catalog and registers nothing. Placeholder names are the base SDK's, so every Langsys SDK derives the same phrase. The transform works in every build shape Vue has, including `<script setup>` with the template inlined (production builds) and server builds.
+
+- **`localeHeaders()` — ask your own API for the user's language.** Returns `{ 'Accept-Language': <locale> }` for the locale the user chose (inside a server request scope, the scope's), to spread into your API calls' headers. Re-exported from the base SDK; also `LangsysApp.localeHeaders()`.
 
 - **The server-to-client hand-off takes the whole seed.** `LangsysApp.seedCatalog(seed.catalog, seed.locale, seed)` tells the client which blocks and phrases the server already registered, so it never sends them again. Under `ssrTokenStrategy: 'server'`, `<Translate>` and `<Phrase>` now register inside the request scope, and the scope sends them after the response.
 

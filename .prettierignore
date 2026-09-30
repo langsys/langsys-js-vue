@@ -18,3 +18,4 @@ CHANGELOG.md
 contract-fixture/
 test/fixtures/server-message-vectors.json
 test/fixtures/snapshot-vectors.json
+test/fixtures/var-naming-vectors.json

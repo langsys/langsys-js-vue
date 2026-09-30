@@ -599,12 +599,12 @@ export const MUTATIONS = [
     {
         id: 'M44',
         rules: 'VAR-2',
-        what: 'the length/size/count rule is dropped, so items.length is named length',
+        what: "a member chain is handed to the core's naming as one identifier, so user.name is named user_name",
         file: 'src/compiler.ts',
         edits: [
             {
-                find: '    if (last > 0 && /^(length|size|count)$/.test(chain[last]!)) {',
-                replace: '    if (last > 0 && /^(never)$/.test(chain[last]!)) {',
+                find: '        return segments.length === 1 ? { identifier: segments[0]! } : { member: segments };',
+                replace: "        return { identifier: segments.join('_') };",
             },
         ],
         check: vitest('src/compiler.test.ts'),
@@ -635,7 +635,7 @@ export const MUTATIONS = [
         rules: 'SRV-3, SRV-4',
         what: 'a block rendered inside a server request scope is not registered there, so the server never collects it',
         file: 'src/components/Translate.ts',
-        edits: [{ find: '                      registerBlock(nodes, options());\n', replace: '' }],
+        edits: [{ find: '                      if (!unregistered) registerBlock(nodes, options());\n', replace: '' }],
         check: vitest('src/handoff-contract.test.ts'),
     },
     {
@@ -667,6 +667,33 @@ export const MUTATIONS = [
         file: 'src/components/Translate.ts',
         edits: [{ find: '            const rendered = scope\n', replace: '            const rendered = false\n' }],
         check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M51',
+        rules: 'VAR-1, VAR-7',
+        what: '<Translate> registers a block holding a compiled variable, so each user registers a phrase of their own',
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '            unregistered = converted.variable;\n',
+                replace: '            unregistered = false;\n',
+            },
+        ],
+        check: vitest('src/variables-contract.test.ts', 'src/compiler.test.ts'),
+    },
+    {
+        id: 'M52',
+        rules: 'VAR-7',
+        what: 'a compiled variable falls back like a component, served as written instead of rendered from the catalog',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) variable = true;\n',
+                replace:
+                    "            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) return void (failure = 'component');\n",
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
     },
 ];
 

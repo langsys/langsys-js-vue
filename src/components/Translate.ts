@@ -6,10 +6,11 @@ import {
     registerBlock,
     renderBlock,
     warnUnrenderedBlock,
+    warnUnregistered,
     type BlockNode,
     type ParamPrimitive,
 } from 'langsys-js-typescript';
-import { FALLBACK_ANCESTOR, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
+import { FALLBACK_ANCESTOR, UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
 import { serverScope, useT } from '../composables.js';
 
 /**
@@ -70,8 +71,8 @@ export const Translate = defineComponent({
         let instance: VanillaTranslate | undefined;
         /** What the last render converted: the tree to register, or null when the slot fell back. */
         let tree: BlockNode[] | null = null;
-        /** A slot holding a compiled variable (VAR-7): rendered as written, never registered, no DOM class. */
-        let inert = false;
+        /** A slot holding a compiled variable (VAR-7): rendered from the catalog, never registered, no DOM class. */
+        let unregistered = false;
 
         const options = () => ({
             category: props.category,
@@ -83,7 +84,7 @@ export const Translate = defineComponent({
         // Fallback: a slot the tree cannot express (a component, v-html) is walked by the core's
         // DOM class after mount, as before.
         const create = () => {
-            if (!host.value || tree || inert) return;
+            if (!host.value || tree || unregistered) return;
             instance?.destroy();
             instance = new VanillaTranslate(host.value, {
                 category: props.category,
@@ -121,8 +122,8 @@ export const Translate = defineComponent({
             const slot = slots.default?.() ?? [];
             const converted = slotToBlockNodes(slot);
             if (!converted.ok) {
-                inert = converted.reason === 'variable';
-                mode.owns = !inert;
+                unregistered = false;
+                mode.owns = true;
                 tree = null;
                 warnUnrenderedBlock(converted.reason);
                 return h(
@@ -132,16 +133,17 @@ export const Translate = defineComponent({
                 );
             }
             mode.owns = false;
-            inert = false;
-            tree = converted.nodes;
             const nodes = converted.nodes;
+            unregistered = converted.variable;
+            if (unregistered) warnUnregistered(UNREGISTERED_REASON);
+            tree = unregistered ? null : nodes;
             // On a server, render and register inside the request scope, which may have been provided
             // to the app rather than entered (Nuxt): the core renders over its catalog, defers the
             // registration to `close()` and marks the block collected in the seed, so the client
             // never sends it again (SRV-3).
             const rendered = scope
                 ? scope.run(() => {
-                      registerBlock(nodes, options());
+                      if (!unregistered) registerBlock(nodes, options());
                       return renderBlock(nodes, options());
                   })
                 : renderBlock(nodes, options());

@@ -78,6 +78,9 @@ export { currentlyLoadedLocale, createSignal, sTranslations, tSignal as t } from
 // (v0.3.0+); re-exported so consumers can normalize their own values the same
 // way before comparing against `useCurrentLocale()` / `detectPreferredLocale()`.
 export { canonicalizeLocale } from 'langsys-js-typescript';
+// FRM-6: the request header that asks the app's own API for the user's language, `{ 'Accept-Language': … }`.
+// Also reachable as `LangsysApp.localeHeaders()`.
+export { localeHeaders } from 'langsys-js-typescript';
 
 // API client (vanilla — no Vue concerns)
 export { LangsysAppAPI } from 'langsys-js-typescript';

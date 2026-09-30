@@ -392,9 +392,21 @@ It rewrites each `{{ … }}` inside `<Translate>` and `<Phrase>`, and each ``t(`
 <!-- registers "You have {items_count} items", params { items_count: items.length } -->
 ```
 
-Names come from the expression: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
+Names come from the expression, derived by the base SDK so every Langsys SDK names a value alike: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
 
-**Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders as written, and the base SDK notes it once in debug mode. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script.
+**Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders what the catalog already holds for its text, on the server and in the browser, and the base SDK notes it once in debug mode, naming the transform to enable. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script.
+
+## Asking your own API for the user's language
+
+`localeHeaders()` returns the request header for the locale the user chose, `{ 'Accept-Language': 'es-es' }`, so your own API calls ask for that language rather than the browser's default. Inside a server request scope it names the scope's locale.
+
+```typescript
+import { localeHeaders } from 'langsys-js-vue';
+
+await fetch('/api/orders', { headers: { ...localeHeaders() } });
+```
+
+It is also `LangsysApp.localeHeaders()`.
 
 ## Route changes (Vue Router)
 
