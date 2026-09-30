@@ -25,13 +25,21 @@ const SEED = {
 let fx: ContractFixture;
 const unmounts: Array<() => void> = [];
 const phrases = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+/** Every stored text: phrases, and block content. */
+const storedText = async () => {
+    const p1 = (await fx.state()).projects.p1;
+    return [...p1.phrases.map((p) => p.phrase), ...p1.blocks.map((b) => b.content ?? '')].join('\n');
+};
 
 /** Mount the template, compiled for real, for one user. */
-function mountFor(template: string, user: string, transform: boolean) {
+function mountFor(template: string, user: string, transform: boolean, cms = '') {
     const code = compile(template, { mode: 'function', nodeTransforms: transform ? [langsysTransform] : [] }).code;
     const el = document.createElement('div');
     document.body.appendChild(el);
-    const app = Vue.createApp({ render: new Function('Vue', code)(Vue), data: () => ({ user: { firstName: user } }) });
+    const app = Vue.createApp({
+        render: new Function('Vue', code)(Vue),
+        data: () => ({ user: { firstName: user }, cms }),
+    });
     app.component('Translate', Translate);
     app.mount(el);
     unmounts.push(() => {
@@ -95,5 +103,25 @@ describe('a variable inside <Translate>, for two users', () => {
         expect(stored.filter((p) => p.startsWith('See you soon'))).toEqual([]);
         expect(log.mock.calls.filter((c) => String(c[0]).includes(`(${UNREGISTERED_REASON})`))).toHaveLength(1);
         log.mockRestore();
+    });
+});
+
+describe('raw HTML is content, not a variable (VAR-7)', () => {
+    it('a block whose only dynamic part is v-html registers its HTML as content, without the transform', async () => {
+        const tpl =
+            '<div><Translate category="UI"><div v-html="cms"></div></Translate><Translate category="UI"><p>Static C</p></Translate></div>';
+        mountFor(tpl, 'Ana', false, '<p>Our spring collection</p><p>is in stores now</p>');
+        await flushedBeside('Static C');
+        expect(await storedText()).toContain('Our spring collection');
+    });
+
+    it('mixed with an interpolated value, it registers nothing: not the HTML, not the value', async () => {
+        const tpl =
+            '<div><Translate category="UI"><div v-html="cms"></div><p>Hi {{ user.firstName }}</p></Translate><Translate category="UI"><p>Static D</p></Translate></div>';
+        mountFor(tpl, 'Ana', false, '<p>Autumn arrivals</p><p>are in stores</p>');
+        await flushedBeside('Static D');
+        const text = await storedText();
+        expect(text).not.toContain('Hi Ana');
+        expect(text).not.toContain('Autumn arrivals');
     });
 });

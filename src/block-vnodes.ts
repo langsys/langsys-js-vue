@@ -64,9 +64,17 @@ export type SlotConversion =
            */
           variable: boolean;
       }
-    | { ok: false; reason: UnrenderedReason };
+    | {
+          ok: false;
+          reason: UnrenderedReason;
+          /** A compiled variable sits beside the raw HTML or component: the block registers nothing (VAR-7). */
+          variable: boolean;
+      };
 
-/** Why a slot is not rendered through the tree: a component or `v-html` has no markup to read until it renders. */
+/**
+ * Why a slot is not rendered through the tree: a component or `v-html` has no markup to read until it
+ * renders. Raw HTML alone is content, registered through the DOM class after mount (VAR-7).
+ */
 export type UnrenderedReason = 'component' | 'v-html';
 
 /**
@@ -120,7 +128,6 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
         const out: BlockNode[] = [];
         const push = (node: BlockNode): void => void out.push(node);
         const visit = (child: unknown): void => {
-            if (failure) return;
             if (child === null || child === undefined || typeof child === 'boolean') return;
             if (typeof child === 'string' || typeof child === 'number') return push({ text: String(child) });
             if (Array.isArray(child)) return child.forEach(visit);
@@ -137,9 +144,11 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             }
             if (vnode.type === Fragment) return (vnode.children as VNodeArrayChildren | null)?.forEach(visit);
             if (vnode.type === Teleport) return void teleports.push(vnode);
-            if (typeof vnode.type !== 'string') return void (failure = 'component');
+            // A fallback does not end the walk: a compiled variable anywhere else in the slot still
+            // decides that nothing registers.
+            if (typeof vnode.type !== 'string') return void (failure ??= 'component');
             const props = vnode.props ?? {};
-            if ('innerHTML' in props || 'textContent' in props) return void (failure = 'v-html');
+            if ('innerHTML' in props || 'textContent' in props) return void (failure ??= 'v-html');
             if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) variable = true;
 
             const attrs: Record<string, string | true> = {};
@@ -162,7 +171,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
     };
 
     const nodes = walk(children);
-    return failure ? { ok: false, reason: failure } : { ok: true, nodes, elements, teleports, variable };
+    return failure ? { ok: false, reason: failure, variable } : { ok: true, nodes, elements, teleports, variable };
 }
 
 /** Vue's shape flags for a vnode's children (runtime-core `ShapeFlags`). */

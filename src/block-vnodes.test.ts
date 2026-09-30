@@ -4,6 +4,7 @@ import {
     Comment,
     createApp,
     createCommentVNode,
+    createVNode,
     defineComponent,
     Fragment,
     h,
@@ -57,11 +58,26 @@ describe('slot vnodes → the core tree', () => {
 
     it('a component in the slot is not converted — the block falls back', () => {
         const Child = defineComponent({ setup: () => () => h('span', 'from a child') });
-        expect(slotToBlockNodes([h('p', 'text'), h(Child)])).toEqual({ ok: false, reason: 'component' });
+        expect(slotToBlockNodes([h('p', 'text'), h(Child)])).toEqual({
+            ok: false,
+            reason: 'component',
+            variable: false,
+        });
     });
 
     it('v-html is not converted — the block falls back', () => {
-        expect(slotToBlockNodes([h('div', { innerHTML: '<i>raw</i>' })])).toEqual({ ok: false, reason: 'v-html' });
+        expect(slotToBlockNodes([h('div', { innerHTML: '<i>raw</i>' })])).toEqual({
+            ok: false,
+            reason: 'v-html',
+            variable: false,
+        });
+    });
+
+    it('v-html beside a compiled variable, before it or after it, marks the block a variable (VAR-7)', () => {
+        const raw = () => h('div', { innerHTML: '<i>raw</i>' });
+        const value = () => createVNode('p', null, 'Hi Ana', 1 /* PatchFlags.TEXT */);
+        expect(slotToBlockNodes([raw(), value()])).toMatchObject({ ok: false, reason: 'v-html', variable: true });
+        expect(slotToBlockNodes([value(), raw()])).toMatchObject({ ok: false, reason: 'v-html', variable: true });
     });
 });
 

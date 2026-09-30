@@ -556,7 +556,7 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: "if (typeof vnode.type !== 'string') return void (failure = 'component');",
+                find: "if (typeof vnode.type !== 'string') return void (failure ??= 'component');",
                 replace: "if (typeof vnode.type !== 'string') return;",
             },
         ],
@@ -675,8 +675,8 @@ export const MUTATIONS = [
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: '            unregistered = converted.variable;\n',
-                replace: '            unregistered = false;\n',
+                find: '\n            unregistered = converted.variable;\n',
+                replace: '\n            unregistered = false;\n',
             },
         ],
         check: vitest('src/variables-contract.test.ts', 'src/compiler.test.ts'),
@@ -694,6 +694,32 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M53',
+        rules: 'VAR-7 (raw HTML)',
+        what: 'the slot walk stops at the first fallback, so a variable after a v-html element goes unseen',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            if (child === null || child === undefined',
+                replace: '            if (failure) return;\n            if (child === null || child === undefined',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M54',
+        rules: 'VAR-1, VAR-7 (raw HTML)',
+        what: 'a block mixing v-html with a compiled variable falls back to the DOM class, which registers the per-user text',
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '                unregistered = converted.variable;\n',
+                replace: '                unregistered = false;\n',
+            },
+        ],
+        check: vitest('src/variables-contract.test.ts'),
     },
 ];
 

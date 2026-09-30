@@ -122,10 +122,13 @@ export const Translate = defineComponent({
             const slot = slots.default?.() ?? [];
             const converted = slotToBlockNodes(slot);
             if (!converted.ok) {
-                unregistered = false;
-                mode.owns = true;
+                // Raw HTML or a component alone falls back to the DOM class; beside a compiled
+                // variable, the block is served as written and registers nothing (VAR-7).
+                unregistered = converted.variable;
+                mode.owns = !unregistered;
                 tree = null;
-                warnUnrenderedBlock(converted.reason);
+                if (unregistered) warnUnregistered(UNREGISTERED_REASON);
+                else warnUnrenderedBlock(converted.reason);
                 return h(
                     props.tag,
                     { ref: host, ...(props.custom_id ? { [CONTENT_BLOCK_MARKER_ATTR]: props.custom_id } : {}) },
