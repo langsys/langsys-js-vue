@@ -1,0 +1,63 @@
+{
+    "config": {
+        "renderer_egress_ips": ["10.0.0.1"]
+    },
+    "projects": [
+        {
+            "id": "p1",
+            "title": "Local testbed",
+            "base_locale": "en-us",
+            "target_locales": ["es-es", "fr-fr", "de-de"],
+            "website_url": "http://localhost",
+            "machine_translate_new_phrases": true,
+            "phrases": [
+                {
+                    "category": "Demo",
+                    "phrase": "Welcome to the Langsys + Vue demo",
+                    "translations": {
+                        "es-es": "Bienvenido a la demo de Langsys + Vue",
+                        "de-de": "Willkommen zur Langsys + Vue Demo"
+                    }
+                },
+                {
+                    "category": "Demo",
+                    "phrase": "Hello {first_name}, welcome back",
+                    "translations": {
+                        "es-es": "Hola {first_name}, bienvenido de nuevo",
+                        "de-de": "Hallo {first_name}, willkommen zurück"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Locale",
+                    "translations": {
+                        "es-es": "Idioma",
+                        "de-de": "Sprache"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {first_name}",
+                    "translations": {
+                        "es-es": "Hola {first_name}",
+                        "de-de": "Hallo {first_name}"
+                    }
+                }
+            ]
+        }
+    ],
+    "keys": [
+        {
+            "key": "k-writer",
+            "project": "p1",
+            "type": "write"
+        },
+        {
+            "key": "k-hints",
+            "project": "p1",
+            "type": "ip_write",
+            "ip_allowlist": [],
+            "report_discovered_content": true
+        }
+    ]
+}

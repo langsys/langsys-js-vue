@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, h, nextTick, onMounted, reactive, ref, watch } from 'vue';
 // In your own app this import is `from 'langsys-js-vue'`. The playground
 // imports the source directly so library edits hot-reload.
-import { LangsysApp, Translate, useCurrentLocale, useLocaleStore, useT } from '../src/index';
+import { LangsysApp, Translate, localeHeaders, useCurrentLocale, useLocaleStore, useT } from '../src/index';
 
 const LOCALES = [
     { code: 'en-US', label: 'English (US)' },
@@ -21,6 +21,36 @@ const error = ref<string | null>(null);
 const t = useT();
 const loadedLocale = useCurrentLocale();
 
+// Placeholders: with the compiler transform, `{{ user.firstName }}` inside <Translate> registers
+// as `{first_name}`, one phrase for every name.
+const user = reactive({ firstName: 'Sarah' });
+
+// The header an app's own API calls send for the user's locale (FRM-6).
+const headers = computed(() => (loadedLocale.value, localeHeaders()));
+
+// Components that resolve after a delay, shown through <Suspense> inside a <Translate>. The core
+// registers a block once its content has been structurally quiet for its settle window (250 ms):
+// the fast panel replaces its fallback inside the window, the slow one after it.
+const panel = (ms: number, text: string) =>
+    defineAsyncComponent(
+        () =>
+            new Promise<{ render: () => ReturnType<typeof h> }>((done) =>
+                setTimeout(() => done({ render: () => h('p', text) }), ms)
+            )
+    );
+const FastPanel = panel(150, 'Delivered within the settle window');
+const SlowPanel = panel(2000, 'Delivered after two seconds');
+
+// Every content-block id on the page, read off the hosts the SDK stamps.
+const blockIds = ref<string[]>([]);
+const readBlockIds = () =>
+    nextTick(() => {
+        blockIds.value = [...document.querySelectorAll('[data-ls-contentblock]')].map(
+            (el) => el.getAttribute('data-ls-contentblock') ?? ''
+        );
+    });
+watch([ready, loadedLocale], readBlockIds);
+
 onMounted(() => {
     const projectid = import.meta.env.VITE_LANGSYS_PROJECT_ID;
     const key = import.meta.env.VITE_LANGSYS_API_KEY;
@@ -33,6 +63,10 @@ onMounted(() => {
         key,
         UserLocaleStore: store,
         baseLocale: 'en-US',
+        // A relative URL (`/api`, served by the Vite proxy) resolves against this page.
+        apiUrl: import.meta.env.VITE_LANGSYS_API_URL
+            ? new URL(import.meta.env.VITE_LANGSYS_API_URL, window.location.href).href.replace(/\/$/, '')
+            : undefined,
         debug: true,
     }).then((res) => {
         if (res?.status === false) error.value = res.errors?.join(', ') ?? 'Init failed';
@@ -117,6 +151,52 @@ function onLocaleChange(event: Event) {
                 <input type="text" placeholder="Type something here…" />
             </p>
         </Translate>
+
+        <section class="card">
+            <h2>Placeholders (compiler transform)</h2>
+            <p>
+                <label>Name: <input v-model="user.firstName" /></label>
+            </p>
+            <Translate category="Demo"
+                ><p>Hello {{ user.firstName }}, welcome back</p></Translate
+            >
+            <Translate category="Demo"
+                ><p>See you soon, {{ user.firstName }}</p></Translate
+            >
+        </section>
+
+        <section class="card">
+            <h2>Suspense slots</h2>
+            <Translate category="Demo">
+                <Suspense>
+                    <FastPanel />
+                    <template #fallback><p>Loading the fast panel…</p></template>
+                </Suspense>
+            </Translate>
+            <Translate category="Demo">
+                <Suspense>
+                    <SlowPanel />
+                    <template #fallback><p>Loading the slow panel…</p></template>
+                </Suspense>
+            </Translate>
+        </section>
+
+        <section class="card">
+            <h2>Content-block ids on this page</h2>
+            <ul>
+                <li v-for="id in blockIds" :key="id">
+                    <code>{{ id }}</code>
+                </li>
+            </ul>
+            <button type="button" @click="readBlockIds">Re-read</button>
+        </section>
+
+        <section class="card">
+            <h2>Accept-Language for your own API</h2>
+            <p>
+                <code>localeHeaders()</code> → <code>{{ headers }}</code>
+            </p>
+        </section>
 
         <p class="footer">
             {{ t('Current locale', 'UI') }}: <code>{{ loadedLocale }}</code>
