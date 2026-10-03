@@ -3,7 +3,7 @@
  * Runs the vendored contract double (`contract-fixture/`) on a fixed port for local testing, seeded
  * from `_dev_/local-seed.json`, and keeps it up until Ctrl-C. See TESTING.md.
  *
- *   npm run double              # http://127.0.0.1:8787/api
+ *   npm run double              # http://127.0.0.1:8789/api
  *   npm run double -- --port 9000
  *
  * The seed holds project `p1` (base en-us; es-es, fr-fr, de-de), a write key `k-writer`, and an
@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const at = process.argv.indexOf('--port');
-const port = at > 0 ? process.argv[at + 1] : '8787';
+const port = at > 0 ? process.argv[at + 1] : '8789';
 
 const double = spawn(process.execPath, [join(root, 'contract-fixture', 'server.mjs'), '--port', port], {
     stdio: ['ignore', 'pipe', 'inherit'],

@@ -29,7 +29,7 @@ const user = reactive({ firstName: 'Sarah' });
 const headers = computed(() => (loadedLocale.value, localeHeaders()));
 
 // Components that resolve after a delay, shown through <Suspense> inside a <Translate>. The core
-// registers a block once its content has been structurally quiet for its settle window (250 ms):
+// registers a block once its content has been quiet for its settle window (500 ms):
 // the fast panel replaces its fallback inside the window, the slow one after it.
 const panel = (ms: number, text: string) =>
     defineAsyncComponent(

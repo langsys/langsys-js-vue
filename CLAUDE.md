@@ -61,7 +61,7 @@ _dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a t
 example/                      # Vite playground (npm run dev) — not published
 example/nuxt/                 # Nuxt app in the documented SSR shape; built and served by npm run test:nuxt
 _dev_/nuxt-e2e.mjs            # builds example/nuxt with Nuxt against packed tarballs, serves it against the contract double
-_dev_/local-double.mjs        # npm run double: the contract double on :8787, seeded from _dev_/local-seed.json, for TESTING.md
+_dev_/local-double.mjs        # npm run double: the contract double on :8789, seeded from _dev_/local-seed.json, for TESTING.md
 TESTING.md                    # testing by hand: link the local core, run the double and the playground, one check per feature
 ```
 
@@ -158,7 +158,7 @@ WriteGrantSource (the Vue-flavored one — WriteGrant | Ref<string | null | unde
 - `npm run test` — Vitest (`vitest run`), node environment by default; DOM suites opt into jsdom per file.
 - `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. It runs in a temporary git worktree (HEAD plus the checkout's uncommitted changes, `node_modules` linked) and never writes to the checkout. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale — including after Prettier rewraps a targeted line.
 - `npm run test:nuxt` — packs the core (the build `node_modules/langsys-js-typescript` resolves to, or `LANGSYS_CORE=<dir>`) and this package, installs both with Nuxt into a temporary copy of `example/nuxt`, builds it, and serves it against the contract double: concurrent it/de isolation, a variable registered once as its placeholder, blocks registered from the server, the payload seed marking them `collected`. Needs the network for the Nuxt install (~2 min); not part of `npm test` or CI.
-- `npm run double` — the contract double on `http://127.0.0.1:8787/api`, seeded for testing by hand (`TESTING.md`). The playground reaches it through the Vite proxy (`LANGSYS_API_PROXY`), since the double sends no CORS headers.
+- `npm run double` — the contract double on `http://127.0.0.1:8789/api` (`--port` to move it), seeded for testing by hand (`TESTING.md`). The playground reaches it through the Vite proxy (`LANGSYS_API_PROXY`), since the double sends no CORS headers.
 - `npm run lint` / `npm run format` — Prettier + ESLint (flat config in `eslint.config.mjs`). Not run in CI.
 
 Note: the Vite/Vitest configs use the `.mts` extension (`vite.config.mts`, `vitest.config.mts`) so they load as ESM on Node versions without `require(esm)` support.
