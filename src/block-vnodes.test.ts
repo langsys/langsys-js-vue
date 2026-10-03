@@ -9,6 +9,7 @@ import {
     Fragment,
     h,
     ref,
+    Suspense,
     Teleport,
     type VNode,
     type VNodeArrayChildren,
@@ -63,6 +64,11 @@ describe('slot vnodes → the core tree', () => {
             reason: 'component',
             variable: false,
         });
+    });
+
+    it('a <Suspense> in the slot is not converted, so its fallback never keys a block (SRV-5)', () => {
+        const suspense = h(Suspense, null, { default: () => h('p', 'Pricing'), fallback: () => h('p', 'Loading…') });
+        expect(slotToBlockNodes([suspense])).toEqual({ ok: false, reason: 'component', variable: false });
     });
 
     it('v-html is not converted — the block falls back', () => {
