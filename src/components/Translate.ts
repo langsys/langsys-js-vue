@@ -1,4 +1,4 @@
-import { defineComponent, h, inject, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { defineComponent, h, onActivated, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue';
 import type { PropType } from 'vue';
 import {
     CONTENT_BLOCK_MARKER_ATTR,
@@ -10,7 +10,7 @@ import {
     type BlockNode,
     type ParamPrimitive,
 } from 'langsys-js-typescript';
-import { FALLBACK_ANCESTOR, UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
+import { UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
 import { serverScope, useT } from '../composables.js';
 
 /**
@@ -65,14 +65,13 @@ export const Translate = defineComponent({
         const t = useT();
         /** The request scope this render serves, on a server; null in the browser. */
         const scope = serverScope();
-        const ancestor = inject(FALLBACK_ANCESTOR, null);
-        const mode = { owns: false };
-        provide(FALLBACK_ANCESTOR, mode);
         let instance: VanillaTranslate | undefined;
-        /** What the last render converted: the tree to register, or null when the slot fell back. */
+        /** What the last render converted: the block as the core's tree, or null when the slot fell back. */
         let tree: BlockNode[] | null = null;
         /** A slot holding a compiled variable (VAR-7): rendered from the catalog, never registered, no DOM class. */
         let unregistered = false;
+        /** The tree last registered, serialized: a re-render that changed the slot registers again. */
+        let registered: string | null = null;
 
         const options = () => ({
             category: props.category,
@@ -93,15 +92,38 @@ export const Translate = defineComponent({
                 params: props.params,
             });
         };
-        // The tree path registers on mount and again whenever `t` changes — a locale or catalog
-        // change, or a navigation (HINT-13) — since rendering registers nothing.
+        // The tree path registers on mount, again whenever `t` changes — a locale or catalog
+        // change, or a navigation (HINT-13) — and after an update that changed the tree (see
+        // `sync`), since rendering registers nothing.
         const register = () => {
-            // An ancestor that fell back to the DOM class registers this block with its own walk.
-            if (ancestor?.owns) return;
-            if (host.value && tree) registerBlock(tree, { ...options(), host: host.value });
+            // A block `<KeepAlive>` has taken out of the page records nothing (HINT-13); it registers
+            // again when it is back (`onActivated`).
+            if (!host.value?.isConnected || !tree) return;
+            registered = JSON.stringify(tree);
+            // Handing the core the host claims it, so the DOM class of a block this one is nested in
+            // never takes it over with that block's params. A slot holding a compiled variable
+            // (VAR-7) hands it over as a read: `register: false` registers nothing. Returned, so Vue
+            // hands a rejection (an unconfigured client under `requireCredentials`) to the app's
+            // errorHandler, from this component.
+            return registerBlock(tree, {
+                ...options(),
+                host: host.value,
+                ...(unregistered ? { register: false } : {}),
+            });
+        };
+        // After a re-render the slot may have changed path or content: a slot that now converts
+        // drops the DOM class and registers its new tree; one that now falls back gets the DOM class.
+        const sync = () => {
+            if (tree || unregistered) {
+                instance?.destroy();
+                instance = undefined;
+                if (tree && JSON.stringify(tree) !== registered) return register();
+            } else if (!instance) create();
         };
 
         onMounted(() => (tree ? register() : create()));
+        onUpdated(sync);
+        onActivated(register);
         watch(t, register, { flush: 'post' });
         watch(
             () => [props.category, props.custom_id, props.label],
@@ -125,7 +147,6 @@ export const Translate = defineComponent({
                 // Raw HTML or a component alone falls back to the DOM class; beside a compiled
                 // variable, the block is served as written and registers nothing (VAR-7).
                 unregistered = converted.variable;
-                mode.owns = !unregistered;
                 tree = null;
                 if (unregistered) warnUnregistered(UNREGISTERED_REASON);
                 else warnUnrenderedBlock(converted.reason);
@@ -135,11 +156,10 @@ export const Translate = defineComponent({
                     slot
                 );
             }
-            mode.owns = false;
             const nodes = converted.nodes;
             unregistered = converted.variable;
             if (unregistered) warnUnregistered(UNREGISTERED_REASON);
-            tree = unregistered ? null : nodes;
+            tree = nodes;
             // On a server, render and register inside the request scope, which may have been provided
             // to the app rather than entered (Nuxt): the core renders over its catalog, defers the
             // registration to `close()` and marks the block collected in the seed, so the client

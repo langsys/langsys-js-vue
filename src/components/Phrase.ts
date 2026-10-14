@@ -1,4 +1,4 @@
-import { defineComponent, h, inject, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { defineComponent, h, onActivated, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue';
 import type { PropType, VNode } from 'vue';
 import {
     PHRASE_MARKER_ATTR,
@@ -10,7 +10,7 @@ import {
     type BlockNode,
     type ParamPrimitive,
 } from 'langsys-js-typescript';
-import { FALLBACK_ANCESTOR, UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
+import { UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
 import { serverScope, useT } from '../composables.js';
 
 /**
@@ -66,14 +66,13 @@ export const Phrase = defineComponent({
         const t = useT();
         /** The request scope this render serves, on a server; null in the browser. */
         const scope = serverScope();
-        const ancestor = inject(FALLBACK_ANCESTOR, null);
-        const mode = { owns: false };
-        provide(FALLBACK_ANCESTOR, mode);
         let instance: VanillaPhrase | undefined;
         /** The phrase host as the core's tree, from the last render; null when the slot fell back. */
         let tree: BlockNode[] | null = null;
         /** A slot holding a compiled variable (VAR-7): rendered from the catalog, never registered, no DOM class. */
         let unregistered = false;
+        /** The tree last registered, serialized: a re-render that changed the slot registers again. */
+        let registered: string | null = null;
 
         // Fallback: a slot the tree cannot express (a component, v-html) is handled by the core's
         // DOM class after mount, as before.
@@ -82,15 +81,33 @@ export const Phrase = defineComponent({
             instance?.destroy();
             instance = new VanillaPhrase(host.value, { category: props.category, params: props.params });
         };
-        // The tree path registers on mount and whenever `t` changes, since rendering registers nothing.
+        // The tree path registers on mount, whenever `t` changes, and after an update that changed
+        // the tree (see `sync`), since rendering registers nothing.
         const register = () => {
-            // An ancestor that fell back to the DOM class registers this block with its own walk.
-            if (ancestor?.owns) return;
-            if (host.value && tree)
-                registerBlock(tree, { category: props.category, params: props.params, host: host.value });
+            // A block `<KeepAlive>` has taken out of the page records nothing (HINT-13); it registers
+            // again when it is back (`onActivated`).
+            if (!host.value?.isConnected || !tree) return;
+            registered = JSON.stringify(tree);
+            // Claims the host, as a read for a compiled variable; returned for Vue's errorHandler (see <Translate>).
+            return registerBlock(tree, {
+                category: props.category,
+                params: props.params,
+                host: host.value,
+                ...(unregistered ? { register: false } : {}),
+            });
+        };
+        // After a re-render the slot may have changed path or content (see <Translate>).
+        const sync = () => {
+            if (tree || unregistered) {
+                instance?.destroy();
+                instance = undefined;
+                if (tree && JSON.stringify(tree) !== registered) return register();
+            } else if (!instance) create();
         };
 
         onMounted(() => (tree ? register() : create()));
+        onUpdated(sync);
+        onActivated(register);
         watch(t, register, { flush: 'post' });
         watch(
             () => props.category,
@@ -114,7 +131,6 @@ export const Phrase = defineComponent({
                 // Raw HTML or a component alone falls back to the DOM class; beside a compiled
                 // variable, the block is served as written and registers nothing (VAR-7).
                 unregistered = converted.variable;
-                mode.owns = !unregistered;
                 tree = null;
                 if (unregistered) warnUnregistered(UNREGISTERED_REASON);
                 else warnUnrenderedBlock(converted.reason);
@@ -122,13 +138,12 @@ export const Phrase = defineComponent({
             }
             // The phrase is its host's content: render it as a phrase-marked host, the unit the
             // core translates as one rich phrase, and put that host's translated children here.
-            mode.owns = false;
             const phrase: BlockNode[] = [
                 { tag: props.tag, attrs: { [PHRASE_MARKER_ATTR]: '' }, children: converted.nodes },
             ];
             unregistered = converted.variable;
             if (unregistered) warnUnregistered(UNREGISTERED_REASON);
-            tree = unregistered ? null : phrase;
+            tree = phrase;
             const opts = { category: props.category, params: props.params };
             // On a server, inside the request scope, provided or entered (see <Translate>).
             const [rendered] = (
@@ -139,12 +154,18 @@ export const Phrase = defineComponent({
                       })
                     : renderBlock(phrase, opts)
             ).nodes;
-            const children =
-                rendered && 'tag' in rendered
-                    ? // The wrapper is source 0, so the slot's elements start at 1.
-                      translatedToVNodes(rendered.children, [null as unknown as VNode, ...converted.elements])
-                    : slot;
-            return h(props.tag, { ref: host, [PHRASE_MARKER_ATTR]: '' }, [...children, ...converted.teleports]);
+            const element = rendered && 'tag' in rendered ? rendered : null;
+            const children = element
+                ? // The wrapper is source 0, so the slot's elements start at 1.
+                  translatedToVNodes(element.children, [null as unknown as VNode, ...converted.elements])
+                : slot;
+            // The host carries what the core set on the phrase host: a translation from the catalog
+            // is marked resolved (GATE-10), so no DOM reader, on the client or in an enclosing
+            // block's walk, files it as source.
+            return h(props.tag, { ref: host, ...element?.attrs, [PHRASE_MARKER_ATTR]: '' }, [
+                ...children,
+                ...converted.teleports,
+            ]);
         };
     },
 });

@@ -1,12 +1,13 @@
 import {
     currentRequestScope,
     currentlyLoadedLocale,
+    localeHeaders as coreLocaleHeaders,
     sTranslations,
     tSignal,
     writeEnabled,
 } from 'langsys-js-typescript';
 import type { RequestScope, Signal, TFunction, iCategories } from 'langsys-js-typescript';
-import { getCurrentInstance, getCurrentScope, inject, onScopeDispose, shallowRef } from 'vue';
+import { getCurrentInstance, getCurrentScope, hasInjectionContext, inject, onScopeDispose, shallowRef } from 'vue';
 import type { ShallowRef } from 'vue';
 import { createLocaleStore, useSignal } from './adapters.js';
 
@@ -37,14 +38,29 @@ export const REQUEST_SCOPE_KEY = Symbol.for('langsys-js-vue.requestScope');
 /**
  * On the server, the request scope this render belongs to: the one provided to this Vue app
  * (`provideRequestScope`, the Nuxt path), else the one current in this async context
- * (`scope.run` or `scope.enter`). Outside any scope — every browser render — `null`.
+ * (`scope.run` or `scope.enter`). Outside any scope — every browser render — `null`. The provided
+ * scope is read wherever Vue can inject: a component's `setup()`, and code run in the app's
+ * context (`app.runWithContext`), which is how Nuxt runs plugins and route middleware.
  *
  * The composables read the scope directly, not the core's process-wide signals: on the server
  * those hold whatever the process last loaded, which is another visitor's locale and catalog.
  */
 export function serverScope(): RequestScope | null {
-    const provided = getCurrentInstance() ? inject<RequestScope | null>(REQUEST_SCOPE_KEY, null) : null;
+    const provided = hasInjectionContext() ? inject<RequestScope | null>(REQUEST_SCOPE_KEY, null) : null;
     return provided ?? currentRequestScope() ?? null;
+}
+
+/**
+ * FRM-6 — the request header that asks the app's own API for the user's language,
+ * `{ 'Accept-Language': 'es-es' }`: the core's `localeHeaders()`, read inside the request scope
+ * this render belongs to, so on the server it names the scope's locale. A scope provided to the
+ * app (the Nuxt path) is found through Vue's injection, so there call it where Vue can inject: in
+ * `setup()`, or in code Nuxt runs in the app's context. `LangsysApp.localeHeaders()` is the core's
+ * own and sees only a scope current in the async context.
+ */
+export function localeHeaders(): Record<string, string> {
+    const scope = serverScope();
+    return scope ? scope.run(coreLocaleHeaders) : coreLocaleHeaders();
 }
 
 /**
@@ -141,9 +157,11 @@ let pastHydration = false;
  *     Svelte's deferred store; `nextTick()` would not do, because a microtask
  *     still drains inside the hydration pass.
  *
- * The deferral costs one tick on the first call per page load. Components
- * mounting later — client-side navigation, a `v-if` block — read through
- * immediately with no `undefined` flash.
+ * The deferral costs one tick on the first call per page load, and on a call
+ * from any component still hydrating then, such as an async setup under
+ * `<Suspense>` that resolves after the first handover. Components mounting
+ * later — client-side navigation, a `v-if` block — read through immediately
+ * with no `undefined` flash.
  *
  *   const writeEnabled = useWriteEnabled();
  *   // template: <span v-if="writeEnabled === undefined">Checking…</span>
@@ -161,8 +179,11 @@ export function useWriteEnabled(): Readonly<ShallowRef<boolean | undefined>> {
     if (!isBrowser) return shallowRef<boolean | undefined>(undefined);
 
     // Past hydration there is nothing to protect against — mirror directly so
-    // later mounts see the real value at once.
-    if (pastHydration) return useSignal(writeEnabled);
+    // later mounts see the real value at once. A component Vue is still
+    // hydrating is the exception: an async setup under <Suspense> can finish
+    // after the handover and still render against the server's markup. Vue
+    // gives a hydrating component's vnode the server's element before setup.
+    if (pastHydration && !getCurrentInstance()?.vnode.el) return useSignal(writeEnabled);
 
     // Hydration pass: publish the same "unknown" the server rendered so the
     // hydrated markup matches, then adopt the real value immediately after.

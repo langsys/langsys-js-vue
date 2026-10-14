@@ -1,4 +1,4 @@
-import { getCurrentScope, isRef, onScopeDispose, shallowRef, watch } from 'vue';
+import { effectScope, getCurrentScope, isRef, onScopeDispose, shallowRef, watch } from 'vue';
 import type { Ref, ShallowRef } from 'vue';
 import { createSignal, type Signal, type WriteGrant } from 'langsys-js-typescript';
 
@@ -65,8 +65,10 @@ export function createLocaleStore(initial = 'en-US'): Signal<string> {
  *   locale.value = 'fr-FR'; // SDK loads French
  *
  * The watcher uses `flush: 'sync'` to preserve the Signal contract the SDK
- * relies on (synchronous notification, immediate first fire). The returned
- * unsubscriber stops the watcher.
+ * relies on (synchronous notification, immediate first fire). It runs in a
+ * detached effect scope: the SDK subscribes inside `init()`, which an app may
+ * call from a component, and a watcher owned by that component would stop
+ * following the ref when it unmounts. The returned unsubscriber stops it.
  */
 export function refToLocaleSource(localeRef: Ref<string>): Signal<string> {
     return {
@@ -78,9 +80,10 @@ export function refToLocaleSource(localeRef: Ref<string>): Signal<string> {
             localeRef.value = fn(localeRef.value);
         },
         subscribe: (run) => {
-            const stop = watch(localeRef, (value) => run(value), { flush: 'sync' });
+            const scope = effectScope(true);
+            scope.run(() => watch(localeRef, (value) => run(value), { flush: 'sync' }));
             run(localeRef.value);
-            return stop;
+            return () => scope.stop();
         },
     };
 }

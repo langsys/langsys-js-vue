@@ -4,7 +4,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { createApp, defineComponent, h, KeepAlive, type Component } from 'vue';
 import { createRouter, createWebHashHistory, RouterView, useRoute, type Router } from 'vue-router';
 import { startContractFixture, sleep, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
-import { createLocaleStore, currentlyLoadedLocale, LangsysApp, syncNavigation, useT } from './index.js';
+import {
+    createLocaleStore,
+    currentlyLoadedLocale,
+    LangsysApp,
+    Phrase,
+    syncNavigation,
+    Translate,
+    useT,
+} from './index.js';
 
 /**
  * HINT-13 against the contract double (spec CONF-2, tier `contract`): a component that stays
@@ -222,4 +230,33 @@ describe('HINT-13 — a persistent layout records its miss at the new URL', () =
         await settle();
         expect(await hintFor('/n5b')).toBe(false);
     });
+
+    /**
+     * `<KeepAlive>` keeps page A's instance when the navigation leaves it: its blocks stay in
+     * memory, out of the page. Content no longer on the page records nothing at the new URL, as
+     * the DOM classes already hold; the tree path is checked here through both wrappers.
+     */
+    it.each([
+        ['<Translate>', () => h(Translate, { category: 'UI' }, () => [h('p', 'Only in cached block F')]), '/n6'],
+        ['<Phrase>', () => h(Phrase, { category: 'UI' }, () => 'Only in cached phrase F'), '/n7'],
+    ] as const)(
+        'a %s on a page <KeepAlive> cached, deactivated by the navigation, records nothing at B',
+        async (_label, block, base) => {
+            await mountApp({
+                layoutPhrase: 'Known phrase',
+                pageA: defineComponent({ render: block }),
+                pageB: says('Known phrase'),
+                keepAlive: true,
+                wire: true,
+                paths: [`${base}a`, `${base}b`],
+            });
+            await runOutJitter();
+            await until(() => hintFor(`${base}a`));
+
+            await go(`${base}b`);
+            await runOutJitter();
+            await settle();
+            expect(await hintFor(`${base}b`)).toBe(false);
+        }
+    );
 });

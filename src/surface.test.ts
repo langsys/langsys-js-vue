@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { LangsysApp as coreLangsysApp } from 'langsys-js-typescript';
+import {
+    LangsysApp as coreLangsysApp,
+    LangsysConfigurationError as CoreConfigurationError,
+} from 'langsys-js-typescript';
+import * as binding from './index.js';
 import { LangsysApp } from './index.js';
 
 /**
@@ -269,5 +273,13 @@ describe('WIRE-5 — the API base is redirectable without patching the artifact,
         // ships against, which added `apiUrl` and warns that `setBaseUrl()` after `init()`
         // leaves the SDK inert. A doc test that pins a sentence can pin a wrong one.
         expect(readme).not.toMatch(/no `apiUrl` field/i);
+    });
+});
+
+describe('WIRE-4 — what an app catches when the client is unconfigured', () => {
+    it("re-exports the core's LangsysConfigurationError, so instanceof matches what the core throws", () => {
+        const exported = (binding as Record<string, unknown>).LangsysConfigurationError;
+        expect(exported).toBe(CoreConfigurationError);
+        expect(new CoreConfigurationError('x')).toBeInstanceOf(exported as typeof CoreConfigurationError);
     });
 });

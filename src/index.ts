@@ -78,17 +78,20 @@ export { currentlyLoadedLocale, createSignal, sTranslations, tSignal as t } from
 // (v0.3.0+); re-exported so consumers can normalize their own values the same
 // way before comparing against `useCurrentLocale()` / `detectPreferredLocale()`.
 export { canonicalizeLocale } from 'langsys-js-typescript';
-// FRM-6: the request header that asks the app's own API for the user's language, `{ 'Accept-Language': … }`.
-// Also reachable as `LangsysApp.localeHeaders()`.
-export { localeHeaders } from 'langsys-js-typescript';
 
 // API client (vanilla — no Vue concerns)
 export { LangsysAppAPI } from 'langsys-js-typescript';
+// WIRE-4: what an unconfigured client throws — an explicit write without credentials, and
+// `t()` under `requireCredentials`. Re-exported so `instanceof` needs no import from the core.
+export { LangsysConfigurationError } from 'langsys-js-typescript';
 
 // Composables + adapters (the Vue-idiomatic reactive layer)
 export { createLocaleStore, refToLocaleSource, refToWriteGrant, useSignal } from './adapters.js';
 export type { WriteGrantSource } from './adapters.js';
 export { useCurrentLocale, useLocaleStore, useT, useTranslations, useWriteEnabled } from './composables.js';
+// FRM-6: the request header that asks the app's own API for the user's language, `{ 'Accept-Language': … }`.
+// The core's, read inside the request scope provided to the app on the server; see composables.ts.
+export { localeHeaders } from './composables.js';
 
 // Components
 export { Translate, type TranslateProps } from './components/Translate.js';

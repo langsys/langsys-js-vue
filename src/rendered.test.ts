@@ -174,3 +174,90 @@ describe('useWriteEnabled — through rendered output', () => {
         app.unmount();
     });
 });
+
+describe('useWriteEnabled — a subtree that hydrates late', () => {
+    /**
+     * The first caller's handover is one macrotask after it ran, but a component whose async
+     * setup is still waiting under `<Suspense>` hydrates later, against the same server markup.
+     * Its own call must still publish what the server rendered.
+     */
+    it('an async setup under <Suspense> that finishes after the handover hydrates against "undefined", then shows the real value', async () => {
+        const vue = await load();
+        const { renderToString } = await import('vue/server-renderer');
+        const { createSSRApp, defineComponent, h, Suspense, useWriteEnabled } = vue;
+        const withAsyncContext = (vue as unknown as { withAsyncContext<T>(fn: () => T): [T, () => void] })
+            .withAsyncContext;
+        const First = defineComponent({
+            setup() {
+                const w = useWriteEnabled();
+                return () => h('i', String(w.value));
+            },
+        });
+        const Late = defineComponent({
+            async setup() {
+                const [waiting, restore] = withAsyncContext(() => new Promise((r) => setTimeout(r, 50)));
+                await waiting;
+                restore();
+                const w = useWriteEnabled();
+                return () => h('b', String(w.value));
+            },
+        });
+        const App = defineComponent({
+            render: () => h('div', [h(First), h(Suspense, null, { default: () => h(Late) })]),
+        });
+
+        const g = globalThis as Record<string, unknown>;
+        const win = g.window;
+        delete g.window; // a server render
+        let served: string;
+        try {
+            const rendering = renderToString(createSSRApp(App));
+            await vi.advanceTimersByTimeAsync(100);
+            served = await rendering;
+        } finally {
+            g.window = win;
+        }
+        expect(served).toBe('<div><i>undefined</i><b>undefined</b></div>');
+
+        signal.set(true); // authorization landed before the client rendered
+        host.innerHTML = served;
+        const mismatches: string[] = [];
+        const app = createSSRApp(App);
+        app.config.warnHandler = (m) => void mismatches.push(m);
+        const error = vi.spyOn(console, 'error').mockImplementation((...a) => void mismatches.push(a.join(' ')));
+        try {
+            app.mount(host);
+            await vi.advanceTimersByTimeAsync(10);
+            expect(host.querySelector('i')?.textContent, 'control: the first caller has handed over').toBe('true');
+            await vi.advanceTimersByTimeAsync(100);
+            await vi.runAllTimersAsync();
+        } finally {
+            error.mockRestore();
+        }
+        expect(mismatches.filter((m) => /hydrat|mismatch/i.test(m))).toEqual([]);
+        expect(host.textContent).toBe('truetrue');
+        app.unmount();
+    });
+
+    it('control: a component mounted after the handover, not hydrating, renders the real value at once', async () => {
+        signal.set(true);
+        const { createApp, defineComponent, h, useWriteEnabled } = await load();
+        const Probe = defineComponent({
+            setup() {
+                const w = useWriteEnabled();
+                return () => h('span', String(w.value));
+            },
+        });
+        const first = createApp(Probe);
+        first.mount(host);
+        await vi.runAllTimersAsync();
+        const later = document.createElement('div');
+        document.body.appendChild(later);
+        const second = createApp(Probe);
+        second.mount(later);
+        expect(later.textContent).toBe('true');
+        second.unmount();
+        later.remove();
+        first.unmount();
+    });
+});

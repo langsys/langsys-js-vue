@@ -4,8 +4,9 @@ import { LangsysApp, localeHeaders } from './index.js';
 import { createRequestScope } from './server.js';
 
 /**
- * FRM-6 — the header that asks the app's own API for the user's language. The helper is the core's;
- * this binding re-exports it and forwards `LangsysApp.localeHeaders()` through its proxy.
+ * FRM-6 — the header that asks the app's own API for the user's language. The answer is the core's;
+ * this binding's `localeHeaders()` asks it inside the request scope provided to the app (the Nuxt
+ * path, `ssr-scope.test.ts`), and `LangsysApp.localeHeaders()` is forwarded through its proxy.
  */
 
 const seed = (catalog: object, locale: string) =>
@@ -13,11 +14,11 @@ const seed = (catalog: object, locale: string) =>
 afterEach(() => seed({ __uncategorized__: {} }, 'en'));
 
 describe('FRM-6 — localeHeaders()', () => {
-    it("is the core's own, and LangsysApp forwards it", () => {
-        expect(localeHeaders).toBe(coreLocaleHeaders);
+    it("answers as the core's outside a scope, and LangsysApp forwards the core's", () => {
+        seed({ __uncategorized__: {} }, 'es-es');
+        expect(localeHeaders()).toEqual(coreLocaleHeaders());
         const { localeHeaders: destructured } = LangsysApp;
-        seed({ __uncategorized__: {} }, 'en');
-        expect(destructured()).toEqual(LangsysApp.localeHeaders());
+        expect(destructured()).toEqual(coreLocaleHeaders());
     });
 
     it('after switching to es-es, names es-es (control: en before the switch)', () => {

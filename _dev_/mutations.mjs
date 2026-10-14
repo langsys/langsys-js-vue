@@ -353,15 +353,15 @@ export const MUTATIONS = [
     {
         id: 'M24',
         rules: 'GATE-10',
-        what: '<Translate> registers its block without handing the core its host, so no resolved ancestor is seen',
+        what: '<Translate> registers its block without handing the core its host, so no resolved ancestor is seen and an enclosing DOM class takes it over',
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: 'registerBlock(tree, { ...options(), host: host.value });',
-                replace: 'registerBlock(tree, options());',
+                find: '                ...options(),\n                host: host.value,\n',
+                replace: '                ...options(),\n',
             },
         ],
-        check: vitest('src/resolved-contract.test.ts'),
+        check: vitest('src/resolved-contract.test.ts', 'src/block-ssr.test.ts'),
     },
     {
         id: 'M25',
@@ -370,8 +370,8 @@ export const MUTATIONS = [
         file: 'src/components/Phrase.ts',
         edits: [
             {
-                find: 'registerBlock(tree, { category: props.category, params: props.params, host: host.value });',
-                replace: 'registerBlock(tree, { category: props.category, params: props.params });',
+                find: '                params: props.params,\n                host: host.value,\n',
+                replace: '                params: props.params,\n',
             },
         ],
         check: vitest('src/resolved-contract.test.ts'),
@@ -563,14 +563,6 @@ export const MUTATIONS = [
         check: vitest('src/block-vnodes.test.ts', 'src/block-ssr.test.ts'),
     },
     {
-        id: 'M41',
-        rules: 'SRV-5',
-        what: 'a block nested under a DOM-class fallback registers itself too, so the ancestor walk and the block both send it',
-        file: 'src/components/Translate.ts',
-        edits: [{ find: '            if (ancestor?.owns) return;\n', replace: '' }],
-        check: vitest('src/resolved-contract.test.ts'),
-    },
-    {
         id: 'M42',
         rules: 'VAR-6',
         what: "the transform rewrites each host as Vue reaches it instead of the whole tree at the root, so the server compiler's slot copy keeps the value",
@@ -720,6 +712,293 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M55',
+        rules: 'BIND-1',
+        what: "refToLocaleSource's watcher belongs to the scope that subscribed it, so the SDK stops following the ref when the component that called init() unmounts",
+        file: 'src/adapters.ts',
+        edits: [
+            {
+                find: '            const scope = effectScope(true);\n',
+                replace: '            const scope = effectScope();\n',
+            },
+        ],
+        check: vitest('src/adapters.test.ts'),
+    },
+    {
+        id: 'M56',
+        rules: 'BIND-1, SRV-1',
+        what: '<Translate> keeps the path and the registration it had at mount, whatever its slot becomes',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: '        onUpdated(sync);\n', replace: '' }],
+        check: vitest('src/block-modes.test.ts', 'src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M57',
+        rules: 'BIND-1',
+        what: '<Phrase> keeps the registration it had at mount, whatever its slot becomes',
+        file: 'src/components/Phrase.ts',
+        edits: [{ find: '        onUpdated(sync);\n', replace: '' }],
+        check: vitest('src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M58',
+        rules: 'BIND-1',
+        what: '<Translate> moves between paths after an update but never registers a tree whose content changed',
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '                if (tree && JSON.stringify(tree) !== registered) return register();\n',
+                replace: '',
+            },
+        ],
+        check: vitest('src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M59',
+        rules: 'MSG-5, SRV-7',
+        what: "useServerMessage renders outside the request scope, so a scope provided to the app (the Nuxt path) serves the process's catalog",
+        file: 'src/server-message.ts',
+        edits: [
+            {
+                find: '            return scope ? scope.run(render) : render();\n',
+                replace: '            return render();\n',
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M60',
+        rules: 'FRM-6, SRV-7',
+        what: "localeHeaders() is the core's alone, so in a scope provided to the app it names the process's locale",
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: '    return scope ? scope.run(coreLocaleHeaders) : coreLocaleHeaders();\n',
+                replace: '    return coreLocaleHeaders();\n',
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M61',
+        rules: 'SRV-2, SRV-7',
+        what: "the provided scope is read only inside a component, so code Nuxt runs in the app's context reads the process",
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: '    const provided = hasInjectionContext() ? inject<RequestScope | null>(REQUEST_SCOPE_KEY, null) : null;\n',
+                replace:
+                    '    const provided = getCurrentInstance() ? inject<RequestScope | null>(REQUEST_SCOPE_KEY, null) : null;\n',
+            },
+        ],
+        check: vitest('src/ssr-scope.test.ts'),
+    },
+    {
+        id: 'M62',
+        rules: 'GATE-10, SRV-1',
+        what: "<Phrase> drops what the core set on the phrase host, so a translation is served unmarked and an enclosing block's DOM class registers it as source",
+        file: 'src/components/Phrase.ts',
+        edits: [
+            {
+                find: "            return h(props.tag, { ref: host, ...element?.attrs, [PHRASE_MARKER_ATTR]: '' }, [\n",
+                replace: "            return h(props.tag, { ref: host, [PHRASE_MARKER_ATTR]: '' }, [\n",
+            },
+        ],
+        check: vitest('src/resolved-contract.test.ts', 'src/ssr-scope.test.ts', 'src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M63',
+        rules: 'HINT-13',
+        what: '<Translate> registers while <KeepAlive> holds it out of the page',
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '            if (!host.value?.isConnected || !tree) return;\n',
+                replace: '            if (!host.value || !tree) return;\n',
+            },
+        ],
+        check: vitest('src/navigation-contract.test.ts', 'src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M64',
+        rules: 'HINT-13',
+        what: '<Phrase> registers while <KeepAlive> holds it out of the page',
+        file: 'src/components/Phrase.ts',
+        edits: [
+            {
+                find: '            if (!host.value?.isConnected || !tree) return;\n',
+                replace: '            if (!host.value || !tree) return;\n',
+            },
+        ],
+        check: vitest('src/navigation-contract.test.ts', 'src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M65',
+        rules: 'BIND-1',
+        what: '<Translate> does not register when <KeepAlive> brings it back, so content that changed while it was cached is never registered',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: '        onActivated(register);\n', replace: '' }],
+        check: vitest('src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M66',
+        rules: 'BIND-1',
+        what: '<Phrase> does not register when <KeepAlive> brings it back',
+        file: 'src/components/Phrase.ts',
+        edits: [{ find: '        onActivated(register);\n', replace: '' }],
+        check: vitest('src/block-updates-contract.test.ts'),
+    },
+    {
+        id: 'M67',
+        rules: 'VAR-6',
+        what: 'the rewritten t() reads any non-literal second argument as params, so a category held in a variable is lost',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: "            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;\n",
+                replace: '            args = `${JSON.stringify(phrase)}, { ...${params}, ...(${others[0]}) }`;\n',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M68',
+        rules: 'SRV-1',
+        what: "translated attributes are laid over as the core spells them, lowercased, so an SVG's camelCase attributes are served twice",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '        const clone = cloneVNode(original, changedAttrs(original, node.attrs), false);\n',
+                replace: '        const clone = cloneVNode(original, node.attrs ?? {}, false);\n',
+            },
+        ],
+        check: vitest('src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M69',
+        rules: 'GATE-8, BIND-1',
+        what: 'useWriteEnabled reads through once the first caller has handed over, so a subtree that hydrates late under <Suspense> mismatches',
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: '    if (pastHydration && !getCurrentInstance()?.vnode.el) return useSignal(writeEnabled);\n',
+                replace: '    if (pastHydration) return useSignal(writeEnabled);\n',
+            },
+        ],
+        check: vitest('src/rendered.test.ts'),
+    },
+    {
+        id: 'M70',
+        rules: 'GATE-8, BIND-1',
+        what: 'useWriteEnabled defers in every component after the handover, so a component mounted later flashes "not known yet"',
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: '    if (pastHydration && !getCurrentInstance()?.vnode.el) return useSignal(writeEnabled);\n',
+                replace: '    if (pastHydration && !getCurrentInstance()) return useSignal(writeEnabled);\n',
+            },
+        ],
+        check: vitest('src/rendered.test.ts'),
+    },
+    {
+        id: 'M71',
+        rules: 'WIRE-4',
+        what: "<Translate> floats its registration, so under requireCredentials the failure never reaches the app's errorHandler",
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '            return registerBlock(tree, {\n                ...options(),\n',
+                replace: '            registerBlock(tree, {\n                ...options(),\n',
+            },
+        ],
+        check: vitest('src/require-credentials.test.ts'),
+    },
+    {
+        id: 'M72',
+        rules: 'WIRE-4',
+        what: "<Phrase> floats its registration, so under requireCredentials the failure never reaches the app's errorHandler",
+        file: 'src/components/Phrase.ts',
+        edits: [
+            {
+                find: '            return registerBlock(tree, {\n                category: props.category,\n',
+                replace: '            registerBlock(tree, {\n                category: props.category,\n',
+            },
+        ],
+        check: vitest('src/require-credentials.test.ts'),
+    },
+    {
+        id: 'M73',
+        rules: 'SRV-3, SRV-7',
+        what: '<Translate> registers on a server before entering the scope it renders in, so a scope provided to the app holds nothing',
+        file: 'src/components/Translate.ts',
+        edits: [
+            { find: '                      if (!unregistered) registerBlock(nodes, options());\n', replace: '' },
+            {
+                find: '            const rendered = scope\n',
+                replace:
+                    '            if (scope && !unregistered) registerBlock(nodes, options());\n            const rendered = scope\n',
+            },
+        ],
+        check: vitest('src/ssr-register.test.ts'),
+    },
+    {
+        id: 'M74',
+        rules: 'SRV-3, SRV-7',
+        what: '<Phrase> registers on a server before entering the scope it renders in, so a scope provided to the app holds nothing',
+        file: 'src/components/Phrase.ts',
+        edits: [
+            { find: '                          if (!unregistered) registerBlock(phrase, opts);\n', replace: '' },
+            {
+                find: '            const [rendered] = (\n',
+                replace:
+                    '            if (scope && !unregistered) registerBlock(phrase, opts);\n            const [rendered] = (\n',
+            },
+        ],
+        check: vitest('src/ssr-register.test.ts'),
+    },
+    {
+        id: 'M75',
+        rules: 'VAR-2',
+        what: 'repeated expressions are merged by source text before the core names them, so an unnameable value repeated is one placeholder',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '    const sources = expressions.map((e) => e.trim());\n',
+                replace: '    const sources = [...new Set(expressions.map((e) => e.trim()))];\n',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M76',
+        rules: 'VAR-1, VAR-7, WIRE-4',
+        what: '<Translate> hands the core a block holding a compiled variable to register, not as a read, so each user registers their own text and requireCredentials rejects it',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: '                ...(unregistered ? { register: false } : {}),\n', replace: '' }],
+        check: vitest('src/variables-contract.test.ts', 'src/require-credentials.test.ts'),
+    },
+    {
+        id: 'M77',
+        rules: 'VAR-7, BIND-1',
+        what: "a translated clone keeps the compiler's patch flags, so a block holding a compiled variable shows [object Object] after a catalog update",
+        file: 'src/block-vnodes.ts',
+        edits: [{ find: '        clone.patchFlag = BAIL;\n', replace: '' }],
+        check: vitest('src/block-modes.test.ts'),
+    },
+    {
+        id: 'M78',
+        rules: 'VAR-2',
+        what: 'a call whose callee cannot be spelled is read as an unnameable expression, so getA()(n) is named value instead of n',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '        if (args && (spelled || isPostfix(call.callee)))\n',
+                replace: '        if (args && spelled)\n',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
     },
 ];
 

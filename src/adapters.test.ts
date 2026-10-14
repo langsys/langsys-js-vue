@@ -109,6 +109,19 @@ describe('refToLocaleSource', () => {
         locale.value = 'it-IT';
         expect(seen).toEqual(['en-US', 'fr-FR', 'de-DE', 'de-de']); // watcher stopped
     });
+
+    it('keeps notifying after the scope that subscribed it stops: init() may run inside a component', () => {
+        const locale = ref('en-US');
+        const seen: string[] = [];
+        const component = effectScope();
+        const unsub = component.run(() => refToLocaleSource(locale).subscribe((v) => void seen.push(v)))!;
+        component.stop(); // the component that called init() unmounts
+        locale.value = 'fr-FR';
+        expect(seen).toEqual(['en-US', 'fr-FR']);
+        unsub();
+        locale.value = 'de-DE';
+        expect(seen).toEqual(['en-US', 'fr-FR']); // its own unsubscriber still stops it
+    });
 });
 
 describe('refToWriteGrant', () => {

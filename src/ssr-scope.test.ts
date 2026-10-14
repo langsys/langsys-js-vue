@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as vue from 'vue';
 import { createSSRApp, defineComponent, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { LangsysApp, Phrase, Translate, useT } from './index.js';
+import { LangsysApp, localeHeaders, Phrase, Translate, useServerMessage, useT } from './index.js';
 import { currentlyLoadedLocale, sTranslations } from 'langsys-js-typescript';
 import { useCurrentLocale, useTranslations } from './index.js';
 import { createRequestScope, installRequestScopes, provideRequestScope, type RequestScope } from './server.js';
@@ -241,8 +241,12 @@ describe("SRV-1 — <Translate> and <Phrase> serve the request scope's translati
                 return scope.run(() => renderToString(createSSRApp(Blocks)));
             })
         );
-        expect(it).toMatch(/data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase>Prezzi<\/span>/);
-        expect(de).toMatch(/data-ls-resolved="de"><p>Preise<\/p><\/translate><span data-ls-phrase>Preise<\/span>/);
+        expect(it).toMatch(
+            /data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase data-ls-resolved="it">Prezzi<\/span>/
+        );
+        expect(de).toMatch(
+            /data-ls-resolved="de"><p>Preise<\/p><\/translate><span data-ls-phrase data-ls-resolved="de">Preise<\/span>/
+        );
     });
     it('a scope provided to the app (the Nuxt path), with no async context: each serves its own locale and records its block', async () => {
         seed(CATALOGS.de, 'de'); // the process-wide state, from another request
@@ -257,7 +261,9 @@ describe("SRV-1 — <Translate> and <Phrase> serve the request scope's translati
         const app = createSSRApp(Blocks);
         provideRequestScope(app, scope);
         const html = await renderToString(app);
-        expect(html).toMatch(/data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase>Prezzi<\/span>/);
+        expect(html).toMatch(
+            /data-ls-resolved="it"><p>Prezzi<\/p><\/translate><span data-ls-phrase data-ls-resolved="it">Prezzi<\/span>/
+        );
         expect(Object.keys(scope.seed().blocks)).toHaveLength(1);
     });
 });
@@ -302,6 +308,20 @@ describe('SRV-2 — what follows the scope on the server', () => {
         expect(await renderToString(app)).toBe('<p>Prezzi|it|Prezzi</p>');
     });
 
+    it("code Nuxt runs in the app's context, outside any component (a plugin, middleware): reads the provided scope", async () => {
+        seed(CATALOGS.de, 'de');
+        const scope = await createRequestScope({ locale: 'it', catalog: CATALOGS.it as never });
+        const app = createSSRApp(Heading);
+        provideRequestScope(app, scope);
+        const read = () => [
+            useT().value('Pricing', 'UI') as string,
+            useCurrentLocale().value,
+            localeHeaders()['Accept-Language'],
+        ];
+        expect(read()).toEqual(['Preise', 'de', 'de']); // control: outside the app's context, the process's
+        expect(app.runWithContext(read)).toEqual(['Prezzi', 'it', 'it']);
+    });
+
     it("the raw signals answer with the request's scope inside it, and with the process outside it", async () => {
         seed(CATALOGS.de, 'de');
         const scope = await createRequestScope({ locale: 'it', catalog: CATALOGS.it as never });
@@ -338,5 +358,34 @@ describe('SRV-2 — what follows the scope on the server', () => {
         );
         expect(it).toBe('<p>Prezzi|it|Prezzi</p>');
         expect(de).toBe('<p>Preise|de|Preise</p>');
+    });
+});
+
+describe('MSG-5 and FRM-6 on the Nuxt path: what reads the locale outside useT()', () => {
+    const MESSAGES: Record<string, object> = {
+        de: { __uncategorized__: {}, Errors: { 'Order {id} failed': 'Bestellung {id} fehlgeschlagen' } },
+        it: { __uncategorized__: {}, Errors: { 'Order {id} failed': 'Ordine {id} fallito' } },
+    };
+    const entry = { code: 'order_failed', template: 'Order {id} failed', params: { id: 5 }, message: 'Order 5 failed' };
+    const Probe = defineComponent({
+        setup() {
+            const render = useServerMessage('Errors');
+            const headers = localeHeaders();
+            return () => h('p', `${render.value(entry)}|${headers['Accept-Language']}`);
+        },
+    });
+
+    it('control: inside scope.run, the server message and the header follow the scope', async () => {
+        seed(MESSAGES.de, 'de'); // the process-wide state, from another request
+        const scope = await createRequestScope({ locale: 'it', catalog: MESSAGES.it as never });
+        expect(await scope.run(() => renderToString(createSSRApp(Probe)))).toBe('<p>Ordine 5 fallito|it</p>');
+    });
+
+    it("a scope provided to the app, with no async context: the server message and the header are the scope's", async () => {
+        seed(MESSAGES.de, 'de');
+        const scope = await createRequestScope({ locale: 'it', catalog: MESSAGES.it as never });
+        const app = createSSRApp(Probe);
+        provideRequestScope(app, scope);
+        expect(await renderToString(app)).toBe('<p>Ordine 5 fallito|it</p>');
     });
 });

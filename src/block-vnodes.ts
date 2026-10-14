@@ -7,7 +7,6 @@ import {
     createCommentVNode,
     h,
     isVNode,
-    type InjectionKey,
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
@@ -177,6 +176,28 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
 /** Vue's shape flags for a vnode's children (runtime-core `ShapeFlags`). */
 const TEXT_CHILDREN = 1 << 3;
 const ARRAY_CHILDREN = 1 << 4;
+/** Vue's patch flag (runtime-core `PatchFlags.BAIL`) for a vnode the compiler's hints do not describe. */
+const BAIL = -2;
+
+/**
+ * The attributes the translation changed on `original`, under the names the vnode spells them
+ * with. The core reads attribute names as HTML does, lowercased, so an SVG's `viewBox` comes back
+ * as `viewbox`; laid over as returned, the element would carry both. An attribute the vnode does
+ * not have (a nested host's markers) is added as the core names it.
+ */
+function changedAttrs(original: VNode, attrs: Readonly<Record<string, string | true>> | undefined) {
+    const props = original.props ?? {};
+    const own = new Map(Object.keys(props).map((name) => [name.toLowerCase(), name]));
+    const changed: Record<string, string | true> = {};
+    for (const [name, value] of Object.entries(attrs ?? {})) {
+        const spelled = own.get(name.toLowerCase());
+        const current: unknown = spelled === undefined ? undefined : props[spelled];
+        if (spelled !== undefined && (current === value || (typeof current === 'number' && String(current) === value)))
+            continue;
+        changed[spelled ?? name] = value;
+    }
+    return changed;
+}
 
 /**
  * Turn the core's translated copy back into vnodes. An element with a `source` is a clone of the
@@ -190,17 +211,12 @@ export function translatedToVNodes(nodes: readonly TranslatedNode[], elements: V
         const children = translatedToVNodes(node.children ?? [], elements);
         const original = node.source === undefined ? undefined : elements[node.source];
         if (!original) return h(node.tag, node.attrs ?? {}, children);
-        const clone = cloneVNode(original, node.attrs ?? {}, false);
+        const clone = cloneVNode(original, changedAttrs(original, node.attrs), false);
         clone.children = children;
         clone.shapeFlag = (clone.shapeFlag & ~TEXT_CHILDREN) | ARRAY_CHILDREN;
+        // The children and attributes are the translation's, not what the compiler marked dynamic:
+        // Vue diffs the clone in full. Kept, a TEXT flag patches the new children array as text.
+        clone.patchFlag = BAIL;
         return clone;
     });
 }
-
-/**
- * Whether a `<Translate>` or `<Phrase>` above this one fell back to the core's DOM class. That
- * class walks its whole host after mount and registers every nested marked host on its own
- * (MARK-4), so a block rendered inside it must not register itself as well, or the nested block
- * is sent twice (SRV-5). Provided by every block component, read by its descendants.
- */
-export const FALLBACK_ANCESTOR = Symbol('langsys-js-vue.fallbackAncestor') as InjectionKey<{ owns: boolean }>;

@@ -81,8 +81,8 @@ const NAMING = JSON.parse(VECTORS_RAW.toString('utf8')) as { cases: NamingCase[]
 describe('VAR-2 — the shared naming vectors (var-naming-vectors.json, vendored byte-exact)', () => {
     it('control: the file is the vendored blob and carries cases', () => {
         const blob = createHash('sha1').update(`blob ${VECTORS_RAW.length}\0`).update(VECTORS_RAW).digest('hex');
-        expect(blob).toBe('a4b61ed248118338269ee870c920ee2c77549edf');
-        expect(NAMING.cases.length).toBe(27);
+        expect(blob).toBe('0513e1cb215edd9df2e5b34a04cc3e5d2cfcc034');
+        expect(NAMING.cases.length).toBe(32);
     });
 
     it.each(NAMING.cases.map((c) => [c.id, c] as const))('%s: each source maps onto its shape', (_, c) => {
@@ -98,10 +98,7 @@ describe('VAR-2 — the shared naming vectors (var-naming-vectors.json, vendored
         );
         expect(derived).toEqual(c.names);
         if (c.expressions.some((e) => e.explicit)) return; // a template has no per-expression explicit name
-        const byExpression = new Map(
-            nameVariables(c.expressions.map((e) => e.source)).map((v) => [v.expression, v.name])
-        );
-        expect(c.expressions.map((e) => byExpression.get(e.source))).toEqual(c.names);
+        expect(nameVariables(c.expressions.map((e) => e.source)).map((v) => v.name)).toEqual(c.names);
     });
 });
 
@@ -126,8 +123,15 @@ describe('VAR-2 — placeholder names come from the source expression', () => {
             ['name', 'user.name', 'other.name'],
             ['name', 'user_name', 'other_name'],
         ],
-        [['user.name', 'user.name'], ['name']],
+        [
+            ['user.name', 'user.name'],
+            ['name', 'name'],
+        ],
         [['a + b'], ['value']],
+        [
+            ['a + b', 'a + b'],
+            ['value', 'value_2'],
+        ],
         [
             ['x ? y : z', '`${a}`', 'list[0]', 'fmt(a, b)'],
             ['value', 'value_2', 'value_3', 'value_4'],
@@ -193,7 +197,9 @@ describe('VAR-6 — interpolations inside <Translate> and <Phrase> become placeh
     it('in <Phrase>, the markup is kept and moves with the translation', async () => {
         seed(IT, 'it');
         const tpl = '<Phrase category="UI">You have {{ items.length }} <b>items</b></Phrase>';
-        expect(await serve(tpl, { items: [1, 2, 3, 4, 5] })).toBe('<span data-ls-phrase>Hai 5 <b>elementi</b></span>');
+        expect(await serve(tpl, { items: [1, 2, 3, 4, 5] })).toBe(
+            '<span data-ls-phrase data-ls-resolved="it">Hai 5 <b>elementi</b></span>'
+        );
     });
 
     it("a developer's own :params win over a derived one of the same name", async () => {
@@ -211,6 +217,47 @@ describe('VAR-6 — interpolations inside <Translate> and <Phrase> become placeh
             const out = compile(tpl, { mode: 'function', nodeTransforms: [langsysTransform] }).code;
             expect(out, tpl).not.toContain('params');
         }
+    });
+
+    it('two unnameable values in one block are two placeholders, each rendering its own value', async () => {
+        const data = { a: 1, b: 2, c: 3, d: 4 };
+        expect(
+            await serve('<div><Translate category="UI"><p>Total {{ a + b }} of {{ c * d }}</p></Translate></div>', data)
+        ).toContain('<p>Total 3 of 12</p>');
+        expect(
+            await serve('<p>{{ t(`Total ${a + b} of ${c * d}`, "UI") }}</p>', data, true, () => ({ t: useT() }))
+        ).toBe('<p>Total 3 of 12</p>');
+    });
+
+    /**
+     * Every value goes to the core's naming in order, never merged by its source text first: a
+     * value that names itself is one placeholder wherever it repeats, and an unnameable one is its
+     * own placeholder each time, since the core cannot tell `a + b` twice from `i++` twice.
+     */
+    it('a repeated value: one placeholder when it names itself, its own placeholder each time when it cannot', async () => {
+        expect(
+            await registers('<Translate category="UI"><p>{{ name }} and {{ name }}</p></Translate>', { name: 'Ana' })
+        ).toBe('{name} and {name}');
+        expect(
+            await registers('<Translate category="UI"><p>{{ a + b }} and {{ a + b }}</p></Translate>', { a: 1, b: 2 })
+        ).toBe('{value} and {value_2}');
+        expect(rewriteTCalls('t(`${a + b} and ${a + b}`)')).toBe(
+            't("{value} and {value_2}", { "value": (a + b), "value_2": (a + b) })'
+        );
+        expect(rewriteTCalls('t(`${name} and ${name}`)')).toBe('t("{name} and {name}", { "name": (name) })');
+        expect(nameVariables(['name', 'a + b', 'name', 'a + b']).map((v) => v.name)).toEqual([
+            'name',
+            'value',
+            'name',
+            'value_2',
+        ]);
+    });
+
+    it('two calls whose callee cannot be spelled are two placeholders, each named from its argument', async () => {
+        const data = { n: 1, getA: () => (x: number) => `A${x}`, getB: () => (x: number) => `B${x}` };
+        const tpl = '<div><Translate category="UI"><p>{{ getA()(n) }} and {{ getB()(n) }}</p></Translate></div>';
+        expect(await registers(tpl, data)).toBe('{n} and {n_2}');
+        expect(await serve(tpl, data)).toContain('<p>A1 and B1</p>');
     });
 
     it('an unnameable expression is named value, with a build-time warning', () => {
@@ -233,6 +280,9 @@ describe('VAR-6 — t() calls in templates', () => {
         expect(rewriteTCalls('t(`Hi ${name}`, "UI", { z: 1 })')).toBe(
             't("Hi {name}", "UI", { ...{ "name": (name) }, ...({ z: 1 }) })'
         );
+        expect(rewriteTCalls('t(`Hi ${name}`, { z: 1 })')).toBe(
+            't("Hi {name}", { ...{ "name": (name) }, ...({ z: 1 }) })'
+        );
     });
 
     it('leaves plain strings and other functions alone', () => {
@@ -242,8 +292,8 @@ describe('VAR-6 — t() calls in templates', () => {
 
     it('in <script setup> with an inlined template — a production build, client and server — the rewrite compiles', () => {
         const { descriptor } = parse(
-            '<script setup lang="ts">\nconst user = { firstName: "Ana" };\nconst t = (p: string, c?: string, v?: object) => p;\n</script>\n' +
-                "<template><h2>{{ t(`Welcome back, ${user.firstName}`, 'UI') }}</h2></template>"
+            '<script setup lang="ts">\nconst user = { firstName: "Ana" };\nconst category = "UI";\nconst t = (p: string, c?: string, v?: object) => p;\n</script>\n' +
+                "<template><h2>{{ t(`Welcome back, ${user.firstName}`, 'UI') }}</h2><p>{{ t(`Bye, ${user.firstName}`, category) }}</p></template>"
         );
         for (const ssr of [false, true]) {
             const out = compileScript(descriptor, {
@@ -256,6 +306,10 @@ describe('VAR-6 — t() calls in templates', () => {
                 `ssr: ${ssr}`
             ).not.toThrow();
             expect(out.content, `ssr: ${ssr}`).toContain('"Welcome back, {first_name}", \'UI\', { "first_name": (');
+            // The arguments of the call that reads the category at run time are its own, never `_ctx`'s.
+            expect(out.content, `ssr: ${ssr}`).toContain(
+                `"Bye, {first_name}", ...((p, a) => (typeof a === 'object' ? [{ ...p, ...a }] : [a, p]))({ "first_name": (`
+            );
         }
     });
 
@@ -270,6 +324,21 @@ describe('VAR-6 — t() calls in templates', () => {
             })
         );
         expect(html).toBe('<h1>Ciao Ana</h1>');
+    });
+
+    /**
+     * A second argument the template names through a variable can be either: the core reads a
+     * string there as the category and an object as params, and so does the rewritten call.
+     */
+    it('a category held in a variable stays the category, and a params object keeps the derived params', async () => {
+        seed(IT, 'it');
+        const html = await serve(
+            '<div><h1>{{ t(`Hello ${user.name}`, category) }}</h1><p>{{ t(`Hello ${user.name}`, extra) }}</p></div>',
+            { user: { name: 'Ana' }, category: 'UI', extra: { unused: 1 } },
+            true,
+            () => ({ t: useT() })
+        );
+        expect(html).toBe('<div><h1>Ciao Ana</h1><p>Hello Ana</p></div>');
     });
 });
 

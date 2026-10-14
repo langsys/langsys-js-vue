@@ -57,7 +57,7 @@ export default defineNuxtConfig({
 
 ## Nuxt
 
-A Nuxt plugin runs inside a render Nuxt has already started, so it cannot wrap that render. It hands the request's scope to that request's Vue app with `provideRequestScope`, and every component in the app reads it:
+A Nuxt plugin runs inside a render Nuxt has already started, so it cannot wrap that render. It hands the request's scope to that request's Vue app with `provideRequestScope`, and everything in the app that reads the locale reads it from there — the composables, `useServerMessage()`, `localeHeaders()`, `<Translate>` and `<Phrase>` — in components and in code Nuxt runs in the app's context, such as plugins and route middleware:
 
 ```typescript
 // plugins/langsys.server.ts

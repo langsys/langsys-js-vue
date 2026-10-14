@@ -32,7 +32,10 @@ const SEED = {
             base_locale: 'en',
             target_locales: ['es-es'],
             website_url: 'https://site.local',
-            phrases: [{ category: 'UI', phrase: 'Known phrase', translations: { 'es-es': 'Frase conocida' } }],
+            phrases: [
+                { category: 'UI', phrase: 'Known phrase', translations: { 'es-es': 'Frase conocida' } },
+                { category: 'UI', phrase: 'Hello {m0o}world{m0c}', translations: { 'es-es': 'Hola {m0o}mundo{m0c}' } },
+            ],
         },
     ],
     keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
@@ -131,6 +134,28 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
         expect(await storedBeside('Source phrase C', 'Resolved phrase C')).toBe(false);
     });
 
+    /**
+     * The marker the core sets: a `<Phrase>` rendered from the catalog carries `data-ls-resolved`
+     * on its host, so no DOM reader files its text as source. Inside a `<Translate>` that falls
+     * back (a component in its slot), the phrase claims its host when it registers, and the
+     * double stores no translation.
+     */
+    it('<Phrase> rendered from the catalog, inside a <Translate> that falls back: its host is marked, and the translation is never stored', async () => {
+        const Icon = defineComponent({ render: () => h('i', '*') });
+        const el = mount(() =>
+            h('div', [
+                h(Translate, { category: 'UI' }, () => [
+                    h(Icon),
+                    h('p', [h(Phrase, { category: 'UI' }, () => ['Hello ', h('b', 'world')])]),
+                ]),
+                phrase('Source phrase H'),
+            ])
+        );
+        await until(() => el.querySelector('[data-ls-phrase]')?.textContent === 'Hola mundo');
+        expect(el.querySelector('[data-ls-phrase]')?.getAttribute('data-ls-resolved')).toBe('es-es');
+        expect(await storedBeside('Source phrase H', 'Hola {m0o}mundo{m0c}')).toBe(false);
+    });
+
     it('the legacy spelling data-langsys-resolved suppresses too', async () => {
         mount(() =>
             h('div', [
@@ -156,7 +181,9 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
 
     it('SRV-5: a depth-3 nested block sends each of its blocks exactly once', async () => {
         // Counted at the transport seam: the double stores registrations idempotently, so
-        // accepted state cannot show a duplicate. Each item the SDK sends is tallied by id.
+        // accepted state cannot show a duplicate. Each item the SDK sends is tallied by id. The
+        // core shares a block's unanswered request, so the count holds even when an enclosing DOM
+        // class takes the block over; block-ssr.test.ts pins whose values the block keeps.
         const sent: string[] = [];
         const original = LangsysAppAPI.createTranslatableItems.bind(LangsysAppAPI);
         const spy = vi.spyOn(LangsysAppAPI, 'createTranslatableItems').mockImplementation(async (items: unknown) => {

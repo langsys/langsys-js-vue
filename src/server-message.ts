@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import type { Ref } from 'vue';
 import { renderServerMessage, type ServerMessage } from 'langsys-js-typescript';
-import { useT } from './composables.js';
+import { serverScope, useT } from './composables.js';
 
 /**
  * MSG-5 — render server message entries in the current locale, reactively.
@@ -24,11 +24,19 @@ import { useT } from './composables.js';
  *
  * `category` defaults to the `messagesCategory` passed to `init()` (`Errors` unless set), which
  * must match the category the server registers its templates under (MSG-6).
+ *
+ * On the server it renders inside the request scope `useT()` reads: the core resolves the
+ * catalog from the async context only, and a scope provided to the app (the Nuxt path) is not
+ * there, so the render would otherwise read the process's catalog, another visitor's.
  */
 export function useServerMessage(category?: string): Readonly<Ref<(entry: ServerMessage) => string>> {
     const t = useT();
+    const scope = serverScope();
     return computed(() => {
         void t.value;
-        return (entry: ServerMessage) => renderServerMessage(entry, category);
+        return (entry: ServerMessage) => {
+            const render = () => renderServerMessage(entry, category);
+            return scope ? scope.run(render) : render();
+        };
     });
 }

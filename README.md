@@ -110,6 +110,12 @@ await LangsysApp.init({
 
 `LangsysAppAPI.setBaseUrl()` still exists, but it only works **before** `init()`. Called afterwards, it leaves the SDK permanently inert: `init()` has already authorized against the default host and failed, nothing throws, and no later change recovers it.
 
+### Without credentials
+
+`init()` without a project id, a key or a locale store resolves `{ status: false }` and leaves the client unconfigured; `LangsysApp.isConfigured()` reports it. The page still renders: `useT()`, `<Translate>` and `<Phrase>` show the text as written, and nothing is sent. A block registration resolves skipped with the reason `not-configured`, and an explicit write through `LangsysAppAPI` throws `LangsysConfigurationError`.
+
+To fail loudly instead, pass `requireCredentials: true`: `t()`, and so every `useT()` call in a template, throws `LangsysConfigurationError`, which reaches your `app.config.errorHandler`. `<Translate>` and `<Phrase>` never throw from a render: they show the text as written and report the same error to `app.config.errorHandler` when their registration fails. A block whose slot holds a component or `v-html`, which the base SDK's DOM class translates, reports it as a rejected promise.
+
 ### SSR token strategy
 
 `ssrTokenStrategy` (default `'client'`) controls when missing tokens are sent during server rendering:
@@ -392,13 +398,15 @@ It rewrites each `{{ … }}` inside `<Translate>` and `<Phrase>`, and each ``t(`
 <!-- registers "You have {items_count} items", params { items_count: items.length } -->
 ```
 
-Names come from the expression, derived by the base SDK so every Langsys SDK names a value alike: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
+The other arguments of such a `t()` call keep their meaning, written literally or held in a variable: a string is the category, an object is params laid over the derived ones.
+
+Names come from the expression, derived by the base SDK so every Langsys SDK names a value alike: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`, `getA()(n)` → `n`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
 
 **Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders what the catalog already holds for its text, on the server and in the browser, and the base SDK notes it once in debug mode, naming the transform to enable. Raw HTML is content, not a variable: a block whose only dynamic part is `v-html`, a CMS field say, registers that HTML's text after mount, with or without the transform; one that also interpolates a value registers nothing. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script.
 
 ## Asking your own API for the user's language
 
-`localeHeaders()` returns the request header for the locale the user chose, `{ 'Accept-Language': 'es-es' }`, so your own API calls ask for that language rather than the browser's default. Inside a server request scope it names the scope's locale.
+`localeHeaders()` returns the request header for the locale the user chose, `{ 'Accept-Language': 'es-es' }`, so your own API calls ask for that language rather than the browser's default. On the server it names the request scope's locale. In Nuxt, where the scope is provided to the app, call it in `setup()` or in code Nuxt runs in the app's context, such as a plugin or route middleware.
 
 ```typescript
 import { localeHeaders } from 'langsys-js-vue';
@@ -406,7 +414,7 @@ import { localeHeaders } from 'langsys-js-vue';
 await fetch('/api/orders', { headers: { ...localeHeaders() } });
 ```
 
-It is also `LangsysApp.localeHeaders()`.
+It is also `LangsysApp.localeHeaders()`, which on the server sees only a scope the render runs in (`renderInRequestScope`, `scope.run`), not one provided to the app.
 
 ## Route changes (Vue Router)
 

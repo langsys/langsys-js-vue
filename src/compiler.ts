@@ -74,6 +74,45 @@ function topLevelArgs(src: string): string[] | null {
     return args.map((a) => a.trim());
 }
 
+/** The call `expr` ends in, `callee(args)`, split at the parenthesis that opens it; null when it ends in none. */
+function finalCall(expr: string): { callee: string; args: string } | null {
+    if (!expr.endsWith(')')) return null;
+    let depth = 0;
+    let quote: string | null = null;
+    let open = -1;
+    for (let i = 0; i < expr.length; i++) {
+        const c = expr[i]!;
+        if (quote) {
+            if (c === '\\') i++;
+            else if (c === quote) quote = null;
+            continue;
+        }
+        if (c === '"' || c === "'" || c === '`') quote = c;
+        else if ('([{'.includes(c)) {
+            if (depth === 0 && c === '(') open = i;
+            depth++;
+        } else if (')]}'.includes(c) && --depth < 0) return null;
+    }
+    if (depth !== 0 || quote || open <= 0) return null;
+    return { callee: expr.slice(0, open).trim(), args: expr.slice(open + 1, -1) };
+}
+
+/** Whether `callee` is a name followed only by member accesses, computed members and calls: `getA()`, `fmt[a]`. */
+function isPostfix(callee: string): boolean {
+    let skeleton = '';
+    let depth = 0;
+    for (const c of callee) {
+        if ('([{'.includes(c)) {
+            if (depth === 0) skeleton += c;
+            depth++;
+        } else if (')]}'.includes(c)) {
+            depth--;
+            if (depth === 0) skeleton += c;
+        } else if (depth === 0) skeleton += c;
+    }
+    return new RegExp(`^${IDENT}(?:\\s*\\??\\.\\s*${IDENT}|\\s*(?:\\?\\.)?\\s*(?:\\(\\)|\\[\\]))*$`).test(skeleton);
+}
+
 /**
  * A template expression as the shape the core names (`ExpressionShape`): an identifier, a member
  * chain (optional chaining read as plain), a call with its arguments, or anything else.
@@ -85,11 +124,19 @@ export function expressionShape(expression: string): ExpressionShape {
         const segments = expr.split(/\s*\??\.\s*/);
         return segments.length === 1 ? { identifier: segments[0]! } : { member: segments };
     }
-    const call = new RegExp(`^(${IDENT}(?:\\s*\\??\\.\\s*${IDENT})*)\\s*\\(([\\s\\S]*)\\)$`).exec(expr);
+    const call = finalCall(expr);
     if (call) {
-        const args = topLevelArgs(call[2]!);
-        if (args)
-            return { call: { callee: call[1]!.replace(/\s+/g, ''), args: args.filter(Boolean).map(expressionShape) } };
+        const args = topLevelArgs(call.args);
+        // A callee spelled as a dotted name is the call's identity; one that cannot be spelled — a
+        // call's result, a computed member — is given as '', and names nothing by itself.
+        const spelled = chain.test(call.callee);
+        if (args && (spelled || isPostfix(call.callee)))
+            return {
+                call: {
+                    callee: spelled ? call.callee.replace(/\s+/g, '') : '',
+                    args: args.filter(Boolean).map(expressionShape),
+                },
+            };
     }
     if (expr.startsWith('`')) return { other: 'template' };
     if (/\?[^.?]*:/.test(expr)) return { other: 'conditional' };
@@ -105,16 +152,18 @@ export interface NamedVariable {
 }
 
 /**
- * Name the variables of one phrase, per VAR-2, with the core's `derivePlaceholderNames()`: the
- * same expression twice is one variable; names already `taken` (a developer's explicit `%name%`)
- * are avoided.
+ * Name the variables of one phrase, per VAR-2, with the core's `derivePlaceholderNames()`: one
+ * entry per expression, in order. Every expression goes to the core, never merged by its source
+ * text first: a value that names itself is one placeholder wherever it repeats, and an unnameable
+ * one is its own placeholder each time, since its source cannot say whether it would evaluate
+ * alike twice. Names already `taken` (a developer's explicit `%name%`) are avoided.
  */
 export function nameVariables(expressions: readonly string[], taken: Iterable<string> = []): NamedVariable[] {
-    const unique = [...new Set(expressions.map((e) => e.trim()))];
+    const sources = expressions.map((e) => e.trim());
     const explicit: NamedExpression[] = [...taken].map((name) => ({ shape: { other: 'explicit' }, explicit: name }));
-    const shapes = unique.map(expressionShape);
+    const shapes = sources.map(expressionShape);
     const names = derivePlaceholderNames([...explicit, ...shapes.map((shape) => ({ shape }))]).slice(explicit.length);
-    return unique.map((expression, i) => {
+    return sources.map((expression, i) => {
         const shape = shapes[i]!;
         const alone = derivePlaceholderNames([{ shape }])[0];
         return {
@@ -123,6 +172,14 @@ export function nameVariables(expressions: readonly string[], taken: Iterable<st
             unnamed: alone === 'value' && !('identifier' in shape && shape.identifier === 'value'),
         };
     });
+}
+
+/** The params object's entries for `variables`: one per placeholder, from the first expression it names. */
+function paramEntries(variables: readonly NamedVariable[]): string[] {
+    const named = new Set<string>();
+    return variables
+        .filter((v) => !named.has(v.name) && named.add(v.name))
+        .map((v) => `${JSON.stringify(v.name)}: (${v.expression})`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -189,15 +246,14 @@ function rewriteHost(host: AstNode, context: TransformContext | undefined): void
     if (!interpolations.length) return;
 
     const variables = nameVariables(interpolations, explicit);
-    const byExpression = new Map(variables.map((v) => [v.expression, v.name]));
     warnUnnamed(context, variables, host.loc);
 
+    // The same walk as `collect`, so the k-th interpolation takes the k-th name.
+    let k = 0;
     const rewrite = (children: AstNode[] = []): AstNode[] =>
         children.map((c) => {
-            if (c.type === INTERPOLATION) {
-                const name = byExpression.get(String((c.content as AstNode).content ?? '').trim());
-                return { type: TEXT, content: `%${name}%`, loc: c.loc } as AstNode;
-            }
+            if (c.type === INTERPOLATION)
+                return { type: TEXT, content: `%${variables[k++]!.name}%`, loc: c.loc } as AstNode;
             if (c.type === ELEMENT) c.children = rewrite(c.children);
             return c;
         });
@@ -205,7 +261,7 @@ function rewriteHost(host: AstNode, context: TransformContext | undefined): void
 
     const props = host.props ?? [];
     const existing = props.find((p) => p.type === DIRECTIVE && p.name === 'bind' && p.arg?.content === 'params');
-    const entries = variables.map((v) => `${JSON.stringify(v.name)}: (${v.expression})`);
+    const entries = paramEntries(variables);
     // A developer's own params come last, so an explicit name always wins.
     if (existing?.exp?.content) entries.push(`...(${existing.exp.content})`);
     host.props = props.filter((p) => p !== existing);
@@ -265,16 +321,18 @@ export function rewriteTCalls(source: string, onUnnamed?: (variables: NamedVaria
         const others = rest.filter((a, k) => !(k === 0 && a === ''));
         const variables = nameVariables(exprs);
         onUnnamed?.(variables.filter((v) => v.unnamed));
-        const byExpression = new Map(variables.map((v) => [v.expression, v.name]));
-        const phrase = parts
-            .map((p, k) => p + (k < exprs.length ? `{${byExpression.get(exprs[k]!.trim())}}` : ''))
-            .join('');
-        const params = `{ ${variables.map((v) => `${JSON.stringify(v.name)}: (${v.expression})`).join(', ')} }`;
+        const phrase = parts.map((p, k) => p + (k < exprs.length ? `{${variables[k]!.name}}` : '')).join('');
+        const params = `{ ${paramEntries(variables).join(', ')} }`;
         let args: string;
         if (others.length === 0) args = `${JSON.stringify(phrase)}, ${params}`;
         else if (others.length === 1 && /^(['"]).*\1$/s.test(others[0]!))
             args = `${JSON.stringify(phrase)}, ${others[0]}, ${params}`;
-        else if (others.length === 1) args = `${JSON.stringify(phrase)}, { ...${params}, ...(${others[0]}) }`;
+        else if (others.length === 1 && /^\{[^]*\}$/.test(others[0]!))
+            args = `${JSON.stringify(phrase)}, { ...${params}, ...(${others[0]}) }`;
+        // Anything else is read when the call runs, as the core reads it: a string is the
+        // category, an object is params.
+        else if (others.length === 1)
+            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;
         else args = `${JSON.stringify(phrase)}, ${others[0]}, { ...${params}, ...(${others[1]}) }`;
         out += source.slice(cursor, m.index) + m[1] + `t(${args})`;
         cursor = close + 1;
