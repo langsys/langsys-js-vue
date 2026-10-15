@@ -314,6 +314,26 @@ describe('TOK-1 — a value inside an excluded element is marked, never a placeh
         expect(await registers(tpl, { x: 'r' })).toBe('(excluded)');
     });
 
+    it('inside SVG, which cannot hold the marker, a value is left as written and the block registers nothing', async () => {
+        const tpl =
+            '<div><Translate category="UI"><p>Count <DontTranslate><svg><text>{{ count }}</text></svg></DontTranslate> items</p></Translate></div>';
+        const html = await serve(tpl, { count: 3 });
+        expect(html).toContain('<svg><text>3</text></svg>');
+        expect(html).not.toContain('data-ls-param');
+        expect(await registers(tpl, { count: 3 })).toBe('(excluded)');
+    });
+
+    it('a bound translate is decided when the page renders: the value is left as written, and read as excluded', async () => {
+        const tpl =
+            '<div><Translate category="UI"><p>Signed in as <span :translate="mode">{{ user.email }}</span> today</p></Translate></div>';
+        const html = await serve(tpl, { ...user, mode: 'no' });
+        expect(html).toContain('<span translate="no">ana@b.c</span>');
+        expect(html).not.toContain('%email%');
+        expect(await registers(tpl, { ...user, mode: 'no' })).toBe('(excluded)');
+        // Control: bound to anything else, the value is a variable, and nothing registers either.
+        expect(await registers(tpl, { ...user, mode: 'yes' })).toBe('(variable)');
+    });
+
     it('compiler-sfc with ssr: true, a server build: the value is marked in the branch <Translate> reads', () => {
         const out = compileTemplate({
             source: '<div><Translate category="UI"><p>Signed in as <span translate="no">{{ user.email }}</span></p></Translate></div>',

@@ -245,6 +245,18 @@ describe('excluded elements (TOK-1)', () => {
         expect(
             flags(at(h('span', { translate: 'no' }, [h('span', { 'data-ls-param': 'email' }, [value('ana@b.c')])])))
         ).toEqual({ variable: false, excluded: false });
+        // A marker the core would not read — a name outside VAR-2's grammar, an empty name, an
+        // element inside — marks nothing: its value is a variable.
+        for (const marker of [
+            h('span', { 'data-ls-param': 'userName' }, [value('Ana')]),
+            h('span', { 'data-ls-param': '' }, [value('Ana')]),
+            h('span', { 'data-ls-param': 'name' }, [h('b', [value('Ana')])]),
+        ])
+            expect(flags(at(marker))).toEqual({ variable: true, excluded: false });
+        expect(flags(at(h('span', { 'data-ls-param': 'name' }, [value('Ana')])))).toEqual({
+            variable: false,
+            excluded: false,
+        });
         // Controls: the same value bare, and under data-notrans="false", which opts back in.
         expect(flags(at(value('ana@b.c')))).toEqual({ variable: true, excluded: false });
         expect(flags(at(h('span', { 'data-notrans': 'false' }, [value('ana@b.c')])))).toEqual({

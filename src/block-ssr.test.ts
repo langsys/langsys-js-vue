@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { createSSRApp, defineComponent, h, type Component } from 'vue';
+import { createApp, createSSRApp, defineComponent, h, Teleport, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { DontTranslate, LangsysApp, Phrase, Translate } from './index.js';
 import { createRequestScope } from './server.js';
@@ -262,5 +262,64 @@ describe('<Phrase> through renderBlock', () => {
         expect(mismatches).toEqual([]);
         el.querySelector('b')!.dispatchEvent(new Event('click'));
         expect(clicks).toBe(1);
+    });
+
+    it('fills its params into a <DontTranslate>, as into any excluded element, served and hydrated', async () => {
+        const { served, el, mismatches } = await serveAndHydrate(() =>
+            defineComponent({
+                render: () =>
+                    h('div', [
+                        h(Phrase, { category: 'UI', params: { email: 'a@b.c' } }, () => [
+                            'Write to ',
+                            h(DontTranslate, null, () => '%email%'),
+                            ' for help',
+                        ]),
+                        // Control: the same phrase around a plain translate="no" element.
+                        h(Phrase, { category: 'UI', params: { email: 'a@b.c' } }, () => [
+                            'Write to ',
+                            h('b', { translate: 'no' }, '%email%'),
+                            ' for help',
+                        ]),
+                    ]),
+            })
+        );
+        expect(served).toContain('<span translate="no" data-ls-dont-translate>a@b.c</span>');
+        expect(served).toContain('<b translate="no">a@b.c</b>');
+        expect([...el.querySelectorAll('[data-ls-phrase]')].map((x) => x.textContent)).toEqual([
+            'Write to a@b.c for help',
+            'Write to a@b.c for help',
+        ]);
+        expect(mismatches).toEqual([]);
+    });
+});
+
+describe('<DontTranslate> inside a block', () => {
+    it('renders a teleport its slot holds once', async () => {
+        seed(IT, 'it');
+        const target = document.createElement('div');
+        target.id = 'tp';
+        document.body.appendChild(target);
+        const el = document.createElement('div');
+        document.body.appendChild(el);
+        const app = createApp(
+            defineComponent({
+                render: () =>
+                    h(Translate, { category: 'UI' }, () => [
+                        h('p', [
+                            'Pricing ',
+                            h(DontTranslate, null, () => ['Kangen', h(Teleport, { to: '#tp' }, [h('b', 'TP')])]),
+                        ]),
+                    ]),
+            })
+        );
+        app.mount(el);
+        cleanups.push(() => {
+            app.unmount();
+            el.remove();
+            target.remove();
+        });
+        await new Promise((r) => setTimeout(r, 20));
+        expect(target.innerHTML).toBe('<b>TP</b>');
+        expect(el.textContent).toBe('Prezzi Kangen');
     });
 });

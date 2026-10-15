@@ -21,8 +21,9 @@ const SEED = {
 
 let fx: ContractFixture;
 let el: HTMLElement;
-let registeredBeforeSwitch = 0;
-let registeredAfterAnswer = false;
+let blockId: string;
+/** Each registration request: what it carried, and the locale loaded when it was sent and when it was answered. */
+const requests: Array<{ items: string[]; sentIn: string; answeredIn?: string }> = [];
 
 const Greeting = defineComponent({
     setup() {
@@ -47,13 +48,21 @@ beforeAll(async () => {
     await until(() => currentlyLoadedLocale.get() === 'en');
 
     const real = globalThis.fetch;
-    let held = 0;
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
-        if (String(url).includes('/translatable-items')) {
-            held++;
-            await sleep(800);
-        }
-        return real(url, init);
+        if (!String(url).includes('/translatable-items')) return real(url, init);
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+            translatable_items?: Array<{ custom_id?: string; phrase?: string }>;
+        };
+        const request = {
+            items: (body.translatable_items ?? []).map((i) => i.custom_id ?? i.phrase ?? '?'),
+            sentIn: currentlyLoadedLocale.get(),
+            answeredIn: undefined as string | undefined,
+        };
+        requests.push(request);
+        await sleep(800);
+        const answer = await real(url, init);
+        request.answeredIn = currentlyLoadedLocale.get();
+        return answer;
     });
 
     el = document.createElement('div');
@@ -68,12 +77,11 @@ beforeAll(async () => {
                 ]),
         })
     ).mount(el);
-    await until(() => held >= 1);
+    await until(() => requests.length >= 1);
     await sleep(500);
-    registeredBeforeSwitch = held;
 
     // The content as a translator has left it by the time the visitor switches language.
-    const blockId = el.querySelector('translate')!.getAttribute('data-ls-contentblock')!;
+    blockId = el.querySelector('translate')!.getAttribute('data-ls-contentblock')!;
     await fx.seed({
         ...SEED,
         projects: [
@@ -103,7 +111,6 @@ beforeAll(async () => {
     store.set('es-es');
     await until(() => currentlyLoadedLocale.get() === 'es-es');
     await sleep(1_500);
-    registeredAfterAnswer = (await fx.state()).projects.p1.blocks.some((b) => b.custom_id === blockId);
 });
 afterAll(async () => {
     vi.unstubAllGlobals();
@@ -111,9 +118,11 @@ afterAll(async () => {
 });
 
 describe('a registration answered after a locale switch keeps the switched catalog', () => {
-    it('control: the registrations were sent before the switch and answered after it', () => {
-        expect(registeredBeforeSwitch).toBeGreaterThanOrEqual(1);
-        expect(registeredAfterAnswer).toBe(true);
+    it('control: the block and the phrase were sent on the base locale and answered after the switched catalog loaded', () => {
+        const inFlight = requests.filter((r) => r.sentIn === 'en' && r.answeredIn === 'es-es');
+        const items = inFlight.flatMap((r) => r.items);
+        expect(items, JSON.stringify(requests)).toContain(blockId);
+        expect(items, JSON.stringify(requests)).toContain('Welcome {m0o}back{m0c}');
     });
 
     it('<Translate> shows the switched catalog’s translation', () => {

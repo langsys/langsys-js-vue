@@ -35,9 +35,7 @@ const TIMER_BLOCK = [
     '    const timer = setTimeout(() => {',
     '        if (cancelled) return;',
     '        pastHydration = true;',
-    '        unsubscribe = writeEnabled.subscribe((next) => {',
-    '            value.value = next;',
-    '        });',
+    '        adopt();',
     '    }, 0);',
 ].join('\n');
 
@@ -694,8 +692,9 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: '            if (child === null || child === undefined',
-                replace: '            if (failure) return;\n            if (child === null || child === undefined',
+                find: "            if (child === null || child === undefined || typeof child === 'boolean') return;\n",
+                replace:
+                    "            if (failure) return;\n            if (child === null || child === undefined || typeof child === 'boolean') return;\n",
             },
         ],
         check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
@@ -883,8 +882,8 @@ export const MUTATIONS = [
         file: 'src/composables.ts',
         edits: [
             {
-                find: '    if (pastHydration && !getCurrentInstance()?.vnode.el) return useSignal(writeEnabled);\n',
-                replace: '    if (pastHydration) return useSignal(writeEnabled);\n',
+                find: '    const hydrating = Boolean(getCurrentInstance()?.vnode.el);\n',
+                replace: '    const hydrating = false;\n',
             },
         ],
         check: vitest('src/rendered.test.ts'),
@@ -896,8 +895,8 @@ export const MUTATIONS = [
         file: 'src/composables.ts',
         edits: [
             {
-                find: '    if (pastHydration && !getCurrentInstance()?.vnode.el) return useSignal(writeEnabled);\n',
-                replace: '    if (pastHydration && !getCurrentInstance()) return useSignal(writeEnabled);\n',
+                find: '    const hydrating = Boolean(getCurrentInstance()?.vnode.el);\n',
+                replace: '    const hydrating = Boolean(getCurrentInstance());\n',
             },
         ],
         check: vitest('src/rendered.test.ts'),
@@ -1086,6 +1085,58 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/require-credentials.test.ts'),
+    },
+    {
+        id: 'M86',
+        rules: 'GATE-8, BIND-1',
+        what: 'a component Vue is hydrating adopts the live value on the handover, not once it has hydrated, so an async setup that calls useWriteEnabled() before it awaits mismatches',
+        file: 'src/composables.ts',
+        edits: [{ find: '    let hydrated = !hydrating;\n', replace: '    let hydrated = true;\n' }],
+        check: vitest('src/rendered.test.ts'),
+    },
+    {
+        id: 'M87',
+        rules: 'TOK-1, BIND-1',
+        what: "a <DontTranslate> renders its own slot instead of the core's content for it, so a phrase's params stay unfilled inside it and a teleport it holds renders twice",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            clone.children = { default: () => children };\n',
+                replace: '            clone.children = original.children;\n',
+            },
+        ],
+        check: vitest('src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M88',
+        rules: 'TOK-1, VAR-6',
+        what: "the transform puts the marker's <span> inside SVG, where it does not render",
+        file: 'src/compiler.ts',
+        edits: [
+            { find: "    return bound === 'author' && node.ns ? 'code' : bound;\n", replace: '    return bound;\n' },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M89',
+        rules: 'TOK-1, VAR-6',
+        what: 'the transform ignores a bound translate, so a value it excludes at run time is shown as %email%',
+        file: 'src/compiler.ts',
+        edits: [{ find: "    if (bindsExclusion) return 'code';\n", replace: '' }],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M90',
+        rules: 'VAR-1, VAR-3, VAR-7',
+        what: 'any element carrying data-ls-param is taken as a marker, so a value inside one the core does not read is registered per user',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            const markedHere = inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode));\n',
+                replace: '            const markedHere = inMarker || VAR_PARAM_ATTR in props;\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
     },
 ];
 

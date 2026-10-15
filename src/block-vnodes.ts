@@ -11,7 +11,7 @@ import {
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
-import { isTranslationExcluded } from 'langsys-js-typescript';
+import { isTranslationExcluded, tokenizeTree } from 'langsys-js-typescript';
 import { NON_TRANSLATABLE_ELEMENTS, TRANSLATABLE_ATTRIBUTES, VAR_PARAM_ATTR } from 'langsys-js-typescript/pure';
 import { DontTranslate } from './components/DontTranslate.js';
 
@@ -136,6 +136,33 @@ function isExcluded(vnode: VNode): boolean {
 }
 
 /**
+ * Whether the core's reader takes an element as a value marker (VAR-3). A marker alone in an element
+ * is its own `{NAME}` token; a name outside VAR-2's grammar, or anything but text inside, makes it
+ * ordinary markup. Asked of the core's tokenizer, over the element's shape, rather than re-read here.
+ */
+function isValueMarker(vnode: VNode): boolean {
+    const name = String(vnode.props?.[VAR_PARAM_ATTR] ?? '').trim();
+    const shape = (children: unknown): BlockNode[] => {
+        if (typeof children === 'string' || typeof children === 'number') return [{ text: 'x' }];
+        if (!Array.isArray(children)) return [];
+        return children.flatMap((child): BlockNode[] => {
+            if (child === null || child === undefined || typeof child === 'boolean') return [];
+            if (!isVNode(child)) return shape(child);
+            if (child.type === Text) return [{ text: 'x' }];
+            if (child.type === Comment) return [{ comment: String(child.children ?? '') }];
+            if (child.type === Fragment) return shape(child.children);
+            return [{ tag: typeof child.type === 'string' ? child.type : 'span', children: shape(child.children) }];
+        });
+    };
+    const probe: BlockNode = {
+        tag: String(vnode.type),
+        attrs: { [VAR_PARAM_ATTR]: name },
+        children: shape(vnode.children),
+    };
+    return tokenizeTree([{ tag: 'p', children: [probe] }]).tokens.join('|') === `{${name}}`;
+}
+
+/**
  * The element a `<DontTranslate>` renders, built from its vnode: its tag, `translate="no"`, the
  * attributes that fall through to it, and its slot's content. The slot is the app's, so its
  * compiled values keep their patch flags.
@@ -207,7 +234,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             const props = vnode.props ?? {};
             if ('innerHTML' in props || 'textContent' in props) return void (failure ??= 'v-html');
             const excludedHere = inExcluded || isExcluded(vnode);
-            const markedHere = inMarker || VAR_PARAM_ATTR in props;
+            const markedHere = inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode));
             if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(excludedHere, markedHere);
 
             const attrs: Record<string, string | true> = {};
@@ -238,6 +265,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
 /** Vue's shape flags for a vnode's children (runtime-core `ShapeFlags`). */
 const TEXT_CHILDREN = 1 << 3;
 const ARRAY_CHILDREN = 1 << 4;
+const SLOTS_CHILDREN = 1 << 5;
 /** Vue's patch flag (runtime-core `PatchFlags.BAIL`) for a vnode the compiler's hints do not describe. */
 const BAIL = -2;
 
@@ -271,9 +299,15 @@ export function translatedToVNodes(nodes: readonly TranslatedNode[], elements: V
         if ('text' in node) return node.text;
         if ('comment' in node) return createCommentVNode(node.comment);
         const original = node.source === undefined ? undefined : elements[node.source];
-        // Excluded content is rendered from source, so a <DontTranslate> renders its own slot.
-        if (original?.type === DontTranslate) return cloneVNode(original);
         const children = translatedToVNodes(node.children ?? [], elements);
+        // A <DontTranslate> renders itself around the content the core rendered for it: its source,
+        // with a phrase's params filled. Its own slot would render the source again, unfilled.
+        if (original?.type === DontTranslate) {
+            const clone = cloneVNode(original, null, false);
+            clone.children = { default: () => children };
+            clone.shapeFlag |= SLOTS_CHILDREN;
+            return clone;
+        }
         if (!original) return h(node.tag, node.attrs ?? {}, children);
         const clone = cloneVNode(original, changedAttrs(original, node.attrs), false);
         clone.children = children;

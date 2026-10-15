@@ -203,6 +203,7 @@ interface AstNode {
     type: number;
     tag?: string;
     tagType?: number;
+    ns?: number;
     content?: unknown;
     children?: AstNode[];
     props?: AstNode[];
@@ -238,15 +239,28 @@ function blockedBy(children: AstNode[] = []): string | null {
  * How an element bounds the sentence (TOK-1): an author's exclusion — `translate="no"` or
  * `data-notrans`, read by the core's own predicate, or `<DontTranslate>` — or code and notation.
  * Neither enters the phrase. A value printed inside an author's exclusion is marked (VAR-3) so a
- * block stores its name, not the value; inside code it is left as written.
+ * block stores its name, not the value; inside code, foreign content, or an element whose exclusion
+ * is bound at run time, it is left as written.
  */
 type Within = 'author' | 'code' | null;
 
 function within(outer: Within, node: AstNode): Within {
     if (outer === 'code') return 'code';
+    const bound = boundBy(outer, node);
+    // Foreign content (SVG, MathML) cannot hold the marker's <span>: a value there is left as written.
+    return bound === 'author' && node.ns ? 'code' : bound;
+}
+
+function boundBy(outer: Within, node: AstNode): Within {
     if (DONT_TRANSLATE.has(node.tag ?? '')) return 'author';
     if (node.tagType !== PLAIN_ELEMENT) return outer;
     if (NON_TRANSLATABLE_ELEMENTS.includes((node.tag ?? '').toLowerCase())) return 'code';
+    // A bound translate or data-notrans is known only when the page renders: its values are left as
+    // written, for the runtime to read as excluded or as variables.
+    const bindsExclusion = node.props?.some(
+        (p) => p.type === DIRECTIVE && p.name === 'bind' && ['translate', 'data-notrans'].includes(p.arg?.content ?? '')
+    );
+    if (bindsExclusion) return 'code';
     const attr = (name: string) => node.props?.find((p) => p.type === ATTRIBUTE && p.name === name);
     const excluded = isTranslationExcluded({
         tagName: node.tag ?? '',

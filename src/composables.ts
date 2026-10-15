@@ -7,7 +7,15 @@ import {
     writeEnabled,
 } from 'langsys-js-typescript';
 import type { RequestScope, Signal, TFunction, iCategories } from 'langsys-js-typescript';
-import { getCurrentInstance, getCurrentScope, hasInjectionContext, inject, onScopeDispose, shallowRef } from 'vue';
+import {
+    getCurrentInstance,
+    getCurrentScope,
+    hasInjectionContext,
+    inject,
+    onMounted,
+    onScopeDispose,
+    shallowRef,
+} from 'vue';
 import type { ShallowRef } from 'vue';
 import { createLocaleStore, useSignal } from './adapters.js';
 
@@ -183,20 +191,33 @@ export function useWriteEnabled(): Readonly<ShallowRef<boolean | undefined>> {
     // hydrating is the exception: an async setup under <Suspense> can finish
     // after the handover and still render against the server's markup. Vue
     // gives a hydrating component's vnode the server's element before setup.
-    if (pastHydration && !getCurrentInstance()?.vnode.el) return useSignal(writeEnabled);
+    const hydrating = Boolean(getCurrentInstance()?.vnode.el);
+    if (pastHydration && !hydrating) return useSignal(writeEnabled);
 
     // Hydration pass: publish the same "unknown" the server rendered so the
     // hydrated markup matches, then adopt the real value immediately after.
+    // A component Vue is hydrating adopts it only once it has hydrated: an async
+    // setup can call this before it awaits, and hydrate long after the handover.
     const value = shallowRef<boolean | undefined>(undefined);
     let unsubscribe: (() => void) | undefined;
     let cancelled = false;
+    let hydrated = !hydrating;
+    const adopt = () => {
+        if (cancelled || unsubscribe || !hydrated || !pastHydration) return;
+        unsubscribe = writeEnabled.subscribe((next) => {
+            value.value = next;
+        });
+    };
+    if (hydrating)
+        onMounted(() => {
+            hydrated = true;
+            adopt();
+        });
 
     const timer = setTimeout(() => {
         if (cancelled) return;
         pastHydration = true;
-        unsubscribe = writeEnabled.subscribe((next) => {
-            value.value = next;
-        });
+        adopt();
     }, 0);
 
     if (getCurrentScope()) {

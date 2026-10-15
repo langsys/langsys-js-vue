@@ -181,7 +181,7 @@ describe('useWriteEnabled — a subtree that hydrates late', () => {
      * setup is still waiting under `<Suspense>` hydrates later, against the same server markup.
      * Its own call must still publish what the server rendered.
      */
-    it('an async setup under <Suspense> that finishes after the handover hydrates against "undefined", then shows the real value', async () => {
+    async function lateSubtree(callFirst: boolean) {
         const vue = await load();
         const { renderToString } = await import('vue/server-renderer');
         const { createSSRApp, defineComponent, h, Suspense, useWriteEnabled } = vue;
@@ -195,10 +195,11 @@ describe('useWriteEnabled — a subtree that hydrates late', () => {
         });
         const Late = defineComponent({
             async setup() {
+                const early = callFirst ? useWriteEnabled() : undefined;
                 const [waiting, restore] = withAsyncContext(() => new Promise((r) => setTimeout(r, 50)));
                 await waiting;
                 restore();
-                const w = useWriteEnabled();
+                const w = early ?? useWriteEnabled();
                 return () => h('b', String(w.value));
             },
         });
@@ -237,6 +238,14 @@ describe('useWriteEnabled — a subtree that hydrates late', () => {
         expect(mismatches.filter((m) => /hydrat|mismatch/i.test(m))).toEqual([]);
         expect(host.textContent).toBe('truetrue');
         app.unmount();
+    }
+
+    it('an async setup under <Suspense> that finishes after the handover hydrates against "undefined", then shows the real value', async () => {
+        await lateSubtree(false);
+    });
+
+    it('the same when the setup calls useWriteEnabled() before it awaits', async () => {
+        await lateSubtree(true);
     });
 
     it('control: a component mounted after the handover, not hydrating, renders the real value at once', async () => {
