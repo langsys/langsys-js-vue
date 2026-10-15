@@ -146,7 +146,7 @@ export const Translate = defineComponent({
             if (!converted.ok) {
                 // Raw HTML or a component alone falls back to the DOM class; beside a compiled
                 // variable, the block is served as written and registers nothing (VAR-7).
-                unregistered = converted.variable;
+                unregistered = converted.variable || converted.excluded;
                 tree = null;
                 if (unregistered) warnUnregistered(UNREGISTERED_REASON);
                 else warnUnrenderedBlock(converted.reason);
@@ -157,7 +157,9 @@ export const Translate = defineComponent({
                 );
             }
             const nodes = converted.nodes;
-            unregistered = converted.variable;
+            // A compiled value inside an excluded element is no part of a phrase, but a block's
+            // content keeps excluded text as written, so the block would store it (VAR-1).
+            unregistered = converted.variable || converted.excluded;
             if (unregistered) warnUnregistered(UNREGISTERED_REASON);
             tree = nodes;
             // On a server, render and register inside the request scope, which may have been provided

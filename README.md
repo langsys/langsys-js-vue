@@ -280,7 +280,7 @@ The component:
 - Registers the whole thing as a **content block** that translators handle as one unit while still translating the individual phrases inside.
 - Auto re-translates on locale change.
 
-`<Translate>` renders its content through the base SDK's block renderer, the same way on the server and in the browser: the served HTML carries the translation and the block's id, and the browser takes it over without a hydration mismatch. Keep its children plain markup — prose, marketing copy, CMS-rendered articles, forms with placeholders. A slot holding a component or `v-html` cannot be rendered that way: it is served as source text, with only an explicit `custom_id` stamped, and translated in the browser after mount (the base SDK logs a warning once). For dynamic per-string values that Vue owns, use `useT()`.
+`<Translate>` renders its content through the base SDK's block renderer, the same way on the server and in the browser: the served HTML carries the translation and the block's id, and the browser takes it over without a hydration mismatch. Keep its children plain markup — prose, marketing copy, CMS-rendered articles, forms with placeholders. A slot holding a component (other than `<DontTranslate>`, which is read as the element it renders) or `v-html` cannot be rendered that way: it is served as source text, with only an explicit `custom_id` stamped, and translated in the browser after mount (the base SDK logs a warning once). For dynamic per-string values that Vue owns, use `useT()`.
 
 ```vue
 <!-- CMS content goes through Translate as-is -->
@@ -355,6 +355,15 @@ on
 
 Renders the host with `translate="no"`, which the base SDK's tokenizer and renderer already honor — the content is never tokenized, registered, or replaced.
 
+A value printed inside it, or inside any `translate="no"` or `data-notrans` element, is no part of the sentence around it:
+
+```vue
+<Phrase category="Account">Signed in as <DontTranslate>{{ user.email }}</DontTranslate> today</Phrase>
+<!-- registers "Signed in as {m0o}{m0c} today" for every user, and shows each user's address -->
+```
+
+A `<Phrase>` keys the excluded element as an empty markup pair, whatever it holds, and renders its content as written. In a `<Translate>`, the [compiler transform](#variables-in-text) marks the value, so the block stores `{email}` in its content instead of the address; without the transform a block holding such a value registers nothing, since its content keeps excluded text as written.
+
 `<DontTranslate>` props: `tag?` (defaults to `span`). `class` falls through to the host.
 
 ### Already-translated regions — `data-ls-resolved`
@@ -402,7 +411,9 @@ The other arguments of such a `t()` call keep their meaning, written literally o
 
 Names come from the expression, derived by the base SDK so every Langsys SDK names a value alike: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`, `getA()(n)` → `n`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
 
-**Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders what the catalog already holds for its text, on the server and in the browser, and the base SDK notes it once in debug mode, naming the transform to enable. Raw HTML is content, not a variable: a block whose only dynamic part is `v-html`, a CMS field say, registers that HTML's text after mount, with or without the transform; one that also interpolates a value registers nothing. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script.
+**Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders what the catalog already holds for its text, on the server and in the browser, and the base SDK notes it once in debug mode, naming the transform to enable. Raw HTML is content, not a variable: a block whose only dynamic part is `v-html`, a CMS field say, registers that HTML's text after mount, with or without the transform; one that also interpolates a value registers nothing. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script. A value inside a `translate="no"` element is marked rather than named: `h('span', { 'data-ls-param': 'email' }, email)`.
+
+Inside `translate="no"`, `data-notrans` or `<DontTranslate>`, the transform wraps a value in that marker instead of a placeholder, named after the sentence's own values so their names never change: `Hi {{ name }}, or <span translate="no">{{ name }}</span>` registers `Hi {name}, or` and stores `{name_2}` in the excluded span. Inside code and notation (`<math>`, `<script>`) a value is left as written, and a block holding one registers nothing.
 
 ## Asking your own API for the user's language
 

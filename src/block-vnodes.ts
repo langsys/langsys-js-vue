@@ -7,10 +7,13 @@ import {
     createCommentVNode,
     h,
     isVNode,
+    mergeProps,
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
-import { TRANSLATABLE_ATTRIBUTES } from 'langsys-js-typescript/pure';
+import { isTranslationExcluded } from 'langsys-js-typescript';
+import { NON_TRANSLATABLE_ELEMENTS, TRANSLATABLE_ATTRIBUTES, VAR_PARAM_ATTR } from 'langsys-js-typescript/pure';
+import { DontTranslate } from './components/DontTranslate.js';
 
 /**
  * Server rendering for `<Translate>` and `<Phrase>` (SRV-1, SRV-5, MARK-1) — the Vue half.
@@ -62,12 +65,19 @@ export type SlotConversion =
            * nothing.
            */
           variable: boolean;
+          /**
+           * Vue compiled a value into an excluded element (TOK-1). The value is no part of a phrase, but a
+           * block's content keeps excluded text as written, so a block holding one registers nothing.
+           */
+          excluded: boolean;
       }
     | {
           ok: false;
           reason: UnrenderedReason;
           /** A compiled variable sits beside the raw HTML or component: the block registers nothing (VAR-7). */
           variable: boolean;
+          /** A compiled value sits inside an excluded element: a block registers nothing. */
+          excluded: boolean;
       };
 
 /**
@@ -109,6 +119,34 @@ function hasDynamicTranslatableAttribute(vnode: VNode): boolean {
 const NOT_ATTRIBUTES = new Set(['key', 'ref', 'ref_for', 'ref_key', 'innerHTML', 'textContent']);
 
 /**
+ * Whether an element and everything inside it are left out of the phrase (TOK-1): an author's
+ * `translate="no"` or `data-notrans`, read by the core's own predicate, or code and notation.
+ */
+function isExcluded(vnode: VNode): boolean {
+    const props = vnode.props ?? {};
+    const present = (name: string) => props[name] !== undefined && props[name] !== null && props[name] !== false;
+    return (
+        NON_TRANSLATABLE_ELEMENTS.includes(String(vnode.type).toLowerCase()) ||
+        isTranslationExcluded({
+            tagName: String(vnode.type),
+            getAttribute: (name) => (present(name) ? (props[name] === true ? '' : String(props[name])) : null),
+            hasAttribute: present,
+        })
+    );
+}
+
+/**
+ * The element a `<DontTranslate>` renders, built from its vnode: its tag, `translate="no"`, the
+ * attributes that fall through to it, and its slot's content. The slot is the app's, so its
+ * compiled values keep their patch flags.
+ */
+function dontTranslateElement(vnode: VNode): VNode {
+    const { tag, ...attrs } = (vnode.props ?? {}) as { tag?: string } & Record<string, unknown>;
+    const slots = vnode.children as { default?: () => VNodeArrayChildren } | null;
+    return h(tag ?? 'span', mergeProps({ translate: 'no', 'data-ls-dont-translate': '' }, attrs), slots?.default?.());
+}
+
+/**
  * Convert a default slot's vnodes into the core's tree.
  *
  * A block whose slot holds a component or `v-html` cannot be converted. A component has not
@@ -122,8 +160,19 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
     const teleports: VNode[] = [];
     let failure: UnrenderedReason | null = null;
     let variable = false;
+    let excluded = false;
+    // A compiled value inside a value marker's element (VAR-3) is named, not a variable.
+    const dynamic = (inExcluded: boolean, inMarker: boolean): void => {
+        if (inMarker) return;
+        if (inExcluded) excluded = true;
+        else variable = true;
+    };
 
-    const walk = (input: VNodeArrayChildren | string | undefined): BlockNode[] => {
+    const walk = (
+        input: VNodeArrayChildren | string | undefined,
+        inExcluded: boolean,
+        inMarker: boolean
+    ): BlockNode[] => {
         const out: BlockNode[] = [];
         const push = (node: BlockNode): void => void out.push(node);
         const visit = (child: unknown): void => {
@@ -138,17 +187,28 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
                 return /^(ls:[a-z][a-z0-9_]*|\/ls)$/.test(text) ? push({ comment: text }) : undefined;
             }
             if (vnode.type === Text) {
-                if (isDynamicText(vnode)) variable = true;
+                if (isDynamicText(vnode)) dynamic(inExcluded, inMarker);
                 return push({ text: String(vnode.children ?? '') });
             }
             if (vnode.type === Fragment) return (vnode.children as VNodeArrayChildren | null)?.forEach(visit);
             if (vnode.type === Teleport) return void teleports.push(vnode);
+            // <DontTranslate> is read as the element it renders, and rendered back as itself. An
+            // attribute bound on it falls through to that element.
+            if (vnode.type === DontTranslate) {
+                if (hasDynamicTranslatableAttribute(vnode)) dynamic(true, inMarker);
+                return element(dontTranslateElement(vnode), vnode);
+            }
             // A fallback does not end the walk: a compiled variable anywhere else in the slot still
             // decides that nothing registers.
             if (typeof vnode.type !== 'string') return void (failure ??= 'component');
+            element(vnode, vnode);
+        };
+        const element = (vnode: VNode, original: VNode): void => {
             const props = vnode.props ?? {};
             if ('innerHTML' in props || 'textContent' in props) return void (failure ??= 'v-html');
-            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) variable = true;
+            const excludedHere = inExcluded || isExcluded(vnode);
+            const markedHere = inMarker || VAR_PARAM_ATTR in props;
+            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(excludedHere, markedHere);
 
             const attrs: Record<string, string | true> = {};
             for (const [name, value] of Object.entries(props)) {
@@ -156,10 +216,10 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
                 if (typeof value === 'string' || typeof value === 'number') attrs[name] = String(value);
                 else if (value === true) attrs[name] = true;
             }
-            elements.push(vnode); // pre-order: the element's index before its descendants'
-            const kids = walk(vnode.children as VNodeArrayChildren | string | undefined);
+            elements.push(original); // pre-order: the element's index before its descendants'
+            const kids = walk(vnode.children as VNodeArrayChildren | string | undefined, excludedHere, markedHere);
             push({
-                tag: vnode.type,
+                tag: vnode.type as string,
                 ...(Object.keys(attrs).length ? { attrs } : {}),
                 ...(kids.length ? { children: kids } : {}),
             });
@@ -169,8 +229,10 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
         return out;
     };
 
-    const nodes = walk(children);
-    return failure ? { ok: false, reason: failure, variable } : { ok: true, nodes, elements, teleports, variable };
+    const nodes = walk(children, false, false);
+    return failure
+        ? { ok: false, reason: failure, variable, excluded }
+        : { ok: true, nodes, elements, teleports, variable, excluded };
 }
 
 /** Vue's shape flags for a vnode's children (runtime-core `ShapeFlags`). */
@@ -208,8 +270,10 @@ export function translatedToVNodes(nodes: readonly TranslatedNode[], elements: V
     return nodes.map((node) => {
         if ('text' in node) return node.text;
         if ('comment' in node) return createCommentVNode(node.comment);
-        const children = translatedToVNodes(node.children ?? [], elements);
         const original = node.source === undefined ? undefined : elements[node.source];
+        // Excluded content is rendered from source, so a <DontTranslate> renders its own slot.
+        if (original?.type === DontTranslate) return cloneVNode(original);
+        const children = translatedToVNodes(node.children ?? [], elements);
         if (!original) return h(node.tag, node.attrs ?? {}, children);
         const clone = cloneVNode(original, changedAttrs(original, node.attrs), false);
         clone.children = children;

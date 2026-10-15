@@ -7,7 +7,7 @@ import { logger } from 'langsys-js-typescript';
 import { startContractFixture, sleep, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
 import { UNREGISTERED_REASON } from './block-vnodes.js';
 import { langsysTransform } from './compiler.js';
-import { createLocaleStore, currentlyLoadedLocale, LangsysApp, Translate } from './index.js';
+import { createLocaleStore, currentlyLoadedLocale, DontTranslate, LangsysApp, Phrase, Translate } from './index.js';
 
 /**
  * VAR-1, VAR-6 and VAR-7 against the contract double: the same component rendered for two users.
@@ -32,20 +32,23 @@ const storedText = async () => {
 };
 
 /** Mount the template, compiled for real, for one user. */
-function mountFor(template: string, user: string, transform: boolean, cms = '') {
+function mountFor(template: string, user: string, transform: boolean, cms = ''): HTMLElement {
     const code = compile(template, { mode: 'function', nodeTransforms: transform ? [langsysTransform] : [] }).code;
     const el = document.createElement('div');
     document.body.appendChild(el);
     const app = Vue.createApp({
         render: new Function('Vue', code)(Vue),
-        data: () => ({ user: { firstName: user }, cms }),
+        data: () => ({ user: { firstName: user, email: `${user.toLowerCase()}@mail.test` }, cms }),
     });
     app.component('Translate', Translate);
+    app.component('Phrase', Phrase);
+    app.component('DontTranslate', DontTranslate);
     app.mount(el);
     unmounts.push(() => {
         app.unmount();
         el.remove();
     });
+    return el;
 }
 
 async function flushedBeside(control: string): Promise<string[]> {
@@ -123,5 +126,88 @@ describe('raw HTML is content, not a variable (VAR-7)', () => {
         const text = await storedText();
         expect(text).not.toContain('Hi Ana');
         expect(text).not.toContain('Autumn arrivals');
+    });
+});
+
+/**
+ * TOK-1 and VAR-3: a value printed inside an excluded element, `<DontTranslate>` or an author's
+ * `translate="no"`. The sentence is the shared canonicalization fixture's (langsys-js-typescript
+ * tests/fixtures/canonicalization-reference.json, blob 926e8b55): rows tok1-rich-no-literal and
+ * tok1-rich-notrans-literal key the phrase, row var-content-translate-no the block's content.
+ * Each shape registers under a category of its own, so the two cannot merge.
+ */
+describe('a value inside an excluded element, for two users', () => {
+    const SHAPES = {
+        a: '<DontTranslate>{{ user.email }}</DontTranslate>',
+        b: '<span translate="no">{{ user.email }}</span>',
+    };
+    const inCategory = async (category: string) => {
+        const p1 = (await fx.state()).projects.p1;
+        return {
+            phrases: p1.phrases.filter((x) => x.category === category).map((x) => x.phrase),
+            blocks: p1.blocks.filter((x) => x.category === category).map((x) => x.content),
+        };
+    };
+    const twoUsers = (hosts: (shape: string, category: string) => string, prefix: string, control: string) => {
+        const tpl = `<div>${Object.entries(SHAPES)
+            .map(([k, shape]) => hosts(shape, `${prefix}${k}`))
+            .join('')}<Phrase category="UI">${control}</Phrase></div>`;
+        return (transform: boolean) => [mountFor(tpl, 'Ana', transform), mountFor(tpl, 'Bo', transform)];
+    };
+    const expectShown = (els: HTMLElement[]) => {
+        expect(els[0]!.textContent).toContain('Signed in as ana@mail.test today');
+        expect(els[1]!.textContent).toContain('Signed in as bo@mail.test today');
+        for (const el of els) expect(el.innerHTML).not.toContain('%email%');
+    };
+    const expectNoValueStored = async () => {
+        const text = await storedText();
+        expect(text).not.toContain('ana@mail.test');
+        expect(text).not.toContain('bo@mail.test');
+    };
+
+    for (const transform of [true, false]) {
+        const mode = transform ? 'with the transform' : 'without it';
+        const n = transform ? 1 : 2;
+        it(`<Phrase>, ${mode}: both users register the one phrase, the value shown and never stored`, async () => {
+            const els = twoUsers(
+                (shape, category) => `<Phrase category="${category}">Signed in as ${shape} today</Phrase>`,
+                `TP${n}`,
+                `Static TP${n}`
+            )(transform);
+            await flushedBeside(`Static TP${n}`);
+            for (const k of Object.keys(SHAPES))
+                expect((await inCategory(`TP${n}${k}`)).phrases).toEqual(['Signed in as {m0o}{m0c} today']);
+            expectShown(els);
+            await expectNoValueStored();
+        });
+    }
+
+    it('<Translate>, with the transform: one block, its content holding the name, the value shown', async () => {
+        const els = twoUsers(
+            (shape, category) => `<Translate category="${category}"><p>Signed in as ${shape} today</p></Translate>`,
+            'TB1',
+            'Static TB1'
+        )(true);
+        await flushedBeside('Static TB1');
+        expect((await inCategory('TB1a')).blocks).toEqual([
+            '<p>Signed in as <span translate="no" data-ls-dont-translate="">{email}</span> today</p>',
+        ]);
+        expect((await inCategory('TB1b')).blocks).toEqual([
+            '<p>Signed in as <span translate="no">{email}</span> today</p>',
+        ]);
+        expectShown(els);
+        await expectNoValueStored();
+    });
+
+    it('<Translate>, without it: the block registers nothing, since its content would keep the value', async () => {
+        const els = twoUsers(
+            (shape, category) => `<Translate category="${category}"><p>Signed in as ${shape} today</p></Translate>`,
+            'TB2',
+            'Static TB2'
+        )(false);
+        await flushedBeside('Static TB2');
+        for (const k of Object.keys(SHAPES)) expect((await inCategory(`TB2${k}`)).blocks).toEqual([]);
+        expectShown(els);
+        await expectNoValueStored();
     });
 });

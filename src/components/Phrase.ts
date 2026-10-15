@@ -141,6 +141,8 @@ export const Phrase = defineComponent({
             const phrase: BlockNode[] = [
                 { tag: props.tag, attrs: { [PHRASE_MARKER_ATTR]: '' }, children: converted.nodes },
             ];
+            // A compiled value inside an excluded element is one empty markup pair in the phrase
+            // (TOK-1), so it is no variable here: the phrase registers.
             unregistered = converted.variable;
             if (unregistered) warnUnregistered(UNREGISTERED_REASON);
             tree = phrase;

@@ -667,8 +667,8 @@ export const MUTATIONS = [
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: '\n            unregistered = converted.variable;\n',
-                replace: '\n            unregistered = false;\n',
+                find: '            unregistered = converted.variable || converted.excluded;\n            if (unregistered) warnUnregistered',
+                replace: '            unregistered = false;\n            if (unregistered) warnUnregistered',
             },
         ],
         check: vitest('src/variables-contract.test.ts', 'src/compiler.test.ts'),
@@ -680,7 +680,7 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: '            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) variable = true;\n',
+                find: '            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(excludedHere, markedHere);\n',
                 replace:
                     "            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) return void (failure = 'component');\n",
             },
@@ -707,7 +707,7 @@ export const MUTATIONS = [
         file: 'src/components/Translate.ts',
         edits: [
             {
-                find: '                unregistered = converted.variable;\n',
+                find: '                unregistered = converted.variable || converted.excluded;\n',
                 replace: '                unregistered = false;\n',
             },
         ],
@@ -999,6 +999,93 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M79',
+        rules: 'TOK-1, VAR-1',
+        what: "<DontTranslate> is read as a component, so a block holding one falls back to the DOM class and stores the first user's value",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            if (vnode.type === DontTranslate) {\n',
+                replace: '            if (vnode.type === DontTranslate && false) {\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M80',
+        rules: 'TOK-1, VAR-7',
+        what: 'a compiled value inside an excluded element is counted as a bare variable, so a <Phrase> without the transform registers nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '        if (inExcluded) excluded = true;\n        else variable = true;\n',
+                replace: '        variable = true;\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M81',
+        rules: 'TOK-1, VAR-6',
+        what: 'the transform rewrites a value inside an excluded element into a placeholder, so the page shows %email%',
+        file: 'src/compiler.ts',
+        edits: [
+            { find: "    if (DONT_TRANSLATE.has(node.tag ?? '')) return 'author';\n", replace: '' },
+            { find: "    return excluded ? 'author' : outer;\n", replace: '    return outer;\n' },
+        ],
+        check: vitest('src/compiler.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M82',
+        rules: 'VAR-1, TOK-1',
+        what: "<Translate> ignores a compiled value inside an excluded element, so without the transform its content stores the user's value",
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '            // content keeps excluded text as written, so the block would store it (VAR-1).\n            unregistered = converted.variable || converted.excluded;\n',
+                replace:
+                    '            // content keeps excluded text as written, so the block would store it (VAR-1).\n            unregistered = converted.variable;\n',
+            },
+        ],
+        check: vitest('src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M83',
+        rules: 'VAR-3, VAR-7',
+        what: 'a compiled value inside a value marker is counted as a variable, so a block whose value the transform marked registers nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [{ find: '        if (inMarker) return;\n', replace: '' }],
+        check: vitest('src/compiler.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M84',
+        rules: 'WIRE-4, BIND-4',
+        what: 'the init override turns requireCredentials on by default, so an app with no credentials throws from t() as it boots',
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: '            writeGrant: refToWriteGrant(config.writeGrant),\n',
+                replace:
+                    '            writeGrant: refToWriteGrant(config.writeGrant),\n            requireCredentials: config.requireCredentials ?? true,\n',
+            },
+        ],
+        check: vitest('src/unconfigured.test.ts'),
+    },
+    {
+        id: 'M85',
+        rules: 'WIRE-4, BIND-4',
+        what: 'the init override drops requireCredentials, so the exception never surfaces at first use',
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: '            writeGrant: refToWriteGrant(config.writeGrant),\n',
+                replace:
+                    '            writeGrant: refToWriteGrant(config.writeGrant),\n            requireCredentials: undefined,\n',
+            },
+        ],
+        check: vitest('src/require-credentials.test.ts'),
     },
 ];
 

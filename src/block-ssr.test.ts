@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSSRApp, defineComponent, h, type Component } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { LangsysApp, Phrase, Translate } from './index.js';
+import { DontTranslate, LangsysApp, Phrase, Translate } from './index.js';
 import { createRequestScope } from './server.js';
 
 /**
@@ -22,6 +22,8 @@ const IT = {
         Pricing: 'Prezzi',
         'Hello, {name}': 'Ciao, {name}',
         'Hello {m0o}world{m0c} again': '{m0o}mondo{m0c} ciao di nuovo',
+        'Built with': 'Creato con',
+        'is ours': 'è nostro',
     },
 };
 
@@ -111,6 +113,35 @@ describe('<Translate> through renderBlock', () => {
         );
         expect(el.innerHTML).toBe(served);
         expect(mismatches).toEqual([]);
+    });
+
+    describe("the space beside a <DontTranslate> at a block's edge", () => {
+        const Edges = () =>
+            defineComponent({
+                render: () =>
+                    h('div', [
+                        h(Translate, { category: 'UI' }, () => [
+                            h('p', ['Built with ', h(DontTranslate, null, () => 'Kangen®')]),
+                        ]),
+                        h(Translate, { category: 'UI' }, () => [
+                            h('p', [h(DontTranslate, null, () => 'Kangen®'), ' is ours']),
+                        ]),
+                    ]),
+            });
+        const texts = (el: Element) => [...el.querySelectorAll('p')].map((p) => p.textContent);
+
+        it('is kept in source text', async () => {
+            const el = document.createElement('div');
+            el.innerHTML = await renderToString(createSSRApp(Edges()));
+            expect(texts(el)).toEqual(['Built with Kangen®', 'Kangen® is ours']);
+        });
+
+        it('is kept in a translation, served and hydrated', async () => {
+            const { served, el, mismatches } = await serveAndHydrate(Edges);
+            expect(served).toContain('<p>Creato con <span translate="no"');
+            expect(texts(el)).toEqual(['Creato con Kangen®', 'Kangen® è nostro']);
+            expect(mismatches).toEqual([]);
+        });
     });
 
     it('a component in the slot falls back: source served, only an explicit id stamped', async () => {

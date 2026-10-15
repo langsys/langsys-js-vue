@@ -18,7 +18,7 @@ src/
     navigation.ts             # syncNavigation(router) — Vue Router afterEach → core notifyNavigation() (HINT-13)
     server-message.ts         # useServerMessage() — reactive wrapper over core renderServerMessage() (MSG-5)
     server.ts                 # `langsys-js-vue/server` (server-only entry): request scopes for SSR (SRV-7)
-    block-vnodes.ts           # slot vnodes ↔ the core's block tree, for <Translate>/<Phrase> (SRV-1, MARK-1); the VAR-7 guard
+    block-vnodes.ts           # slot vnodes ↔ the core's block tree, for <Translate>/<Phrase> (SRV-1, MARK-1); the VAR-7 guard; <DontTranslate> read as its element (TOK-1)
     compiler.ts               # `langsys-js-vue/compiler` (build-time): the template transform; expressions → the core's naming shapes (VAR-6, VAR-2)
     components/
         Translate.ts          # Vue thin wrapper around langsys-js-typescript's vanilla DOM Translate class
@@ -37,7 +37,7 @@ src/
     marker-ssr.test.ts        # MARK-1: served <Translate> host identity vs the core's own stamp
     hydration-handoff.test.ts # SRV-4: synchronous seed before mount vs an unseeded control
     hydration-handoff-init.test.ts # SRV-4: init() seeds only after its round trip (own process)
-    api-redirect.test.ts      # WIRE-5: apiUrl through the init override reaches a double (own process)
+    api-redirect.test.ts      # WIRE-5: apiUrl through the init override reaches a double; ICU-5: the catalog request declares icu (own process)
     navigation-contract.test.ts # HINT-13 against the contract double: layout, KeepAlive, param reuse, cached blocks (own process)
     resolved-contract.test.ts # GATE-10 against the contract double: data-ls-resolved through each wrapper (own process)
     server-message.test.ts    # MSG-5 shared render vectors through a mounted component; MSG-12 page half
@@ -48,14 +48,17 @@ src/
     ssr-subscriptions.test.ts # server renders leave no subscription on the core's signals
     block-vnodes.test.ts      # slot → tree mapping, fallbacks, re-attachment through `source`
     block-ssr.test.ts         # <Translate>/<Phrase> served translated and stamped; hydration parity
-    compiler.test.ts          # VAR-2 shared naming vectors, the transform on all four compile paths, t() rewriting, VAR-7
+    compiler.test.ts          # VAR-2 shared naming vectors, the transform on all four compile paths, t() rewriting, VAR-7, values inside an exclusion (TOK-1)
     locale-headers.test.ts    # FRM-6: localeHeaders() re-exported and forwarded; the scope's locale inside a scope
     variables-contract.test.ts # VAR-1/6/7 against the contract double: two users, with and without the transform (own process)
     handoff-contract.test.ts  # seedCatalog(…, seed): a server-collected block is never sent by the client (own process)
     block-modes.test.ts       # <Translate> through the page's life: slot path changes, child text updates, unmount in the settle window, KeepAlive
     block-updates-contract.test.ts # a slot that changes after mount, or while <KeepAlive> holds it, registers what it now shows (own process)
     catalog-supersede.test.ts # a locale switch through the binding's store that overtakes a catalog fetch (own process)
-    require-credentials.test.ts # WIRE-4: under requireCredentials, a failed registration reaches the app's errorHandler, before init() too (own process)
+    require-credentials.test.ts # WIRE-4: under requireCredentials, a failed registration reaches the app's errorHandler, before init() too; t() throws at first use (own process)
+    unconfigured.test.ts      # WIRE-4: an app with no credentials boots, renders its source with params filled, fetches nothing (own process)
+    register-once-contract.test.ts # REG-7: a block mounted as init() starts, re-registered on every t change, is sent once (own process)
+    switch-during-registration-contract.test.ts # REG-13: a registration answered after a locale switch keeps the switched catalog (own process)
     ssr-register.test.ts      # a server render registers inside its request scope (provided or run), or not at all
 test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
@@ -86,7 +89,7 @@ Components are authored as `defineComponent` + `h()` render functions in plain `
 
 5. **`useLocaleStore(initial)`** — creates one `Signal<string>` per `setup()` call (setup runs once per component instance, so no memoization dance is needed), subscribes with `useSignal`, and returns `{ locale, setLocale, store }`. Pass `store` to `init`; drive the locale with `setLocale`.
 
-6. **`<Translate>` / `<Phrase>`** — render through the core's DOM-free block path, identically on the server and in the browser. `src/block-vnodes.ts` converts the default slot's vnodes into the core's `BlockNode[]` (elements, text, fragments; teleports set aside), the render calls `renderBlock` and stamps its `hostAttrs`, and the translated copy comes back as vnodes by cloning each original vnode through its integer `source` (pre-order index), so handlers, refs and directives survive markup the translation moved. `<Phrase>` renders its slot as a phrase-marked host node. Rendering registers nothing: the component calls `registerBlock(tree, { …, host })` on mount, whenever `t` changes, and after an update that changed its tree; an update that moves the slot onto the other path creates or drops the DOM class. A slot holding a component or `v-html` falls back: `warnUnrenderedBlock(reason)`, source served with only an explicit id stamped, and the vanilla DOM class after mount. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
+6. **`<Translate>` / `<Phrase>`** — render through the core's DOM-free block path, identically on the server and in the browser. `src/block-vnodes.ts` converts the default slot's vnodes into the core's `BlockNode[]` (elements, text, fragments; teleports set aside), the render calls `renderBlock` and stamps its `hostAttrs`, and the translated copy comes back as vnodes by cloning each original vnode through its integer `source` (pre-order index), so handlers, refs and directives survive markup the translation moved. `<Phrase>` renders its slot as a phrase-marked host node. Rendering registers nothing: the component calls `registerBlock(tree, { …, host })` on mount, whenever `t` changes, and after an update that changed its tree; an update that moves the slot onto the other path creates or drops the DOM class. A slot holding a component (other than `<DontTranslate>`, read as the element it renders) or `v-html` falls back: `warnUnrenderedBlock(reason)`, source served with only an explicit id stamped, and the vanilla DOM class after mount. `class` reaches the host through Vue's native attribute fallthrough (no `className` prop).
 
 ## Public API
 
@@ -137,7 +140,8 @@ installRequestScopes()                   // give the core an AsyncLocalStorage (
 createRequestScope, currentRequestScope, setRequestScopeStorage, clearSharedCatalogs  // core, re-exported
 
 // Build-time — `langsys-js-vue/compiler` (VAR-6)
-langsysTransform              // compilerOptions.nodeTransforms entry: {{ x }} in <Translate>/<Phrase>, t(`…${x}`) → placeholders + params
+langsysTransform              // compilerOptions.nodeTransforms entry: {{ x }} in <Translate>/<Phrase>, t(`…${x}`) → placeholders + params;
+                              // inside translate="no"/data-notrans/<DontTranslate>, a data-ls-param marker instead (TOK-1)
 nameVariables(exprs, taken?)  // VAR-2 names via the core's derivePlaceholderNames; expressionShape(expr); langsysCompilerOptions(opts?)
 
 // Components
@@ -231,6 +235,8 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Every tree-path block hands the core its host when it registers, which claims it.** `registerBlock(tree, { host })` claims the host before anything else, so the DOM class of a block it is nested in never takes it over with that block's params (after hydration, an attribute value became `Foto di {name}`); the nested block registers itself, once (SRV-5, M24). A block holding a compiled variable hands its host over as a read, `register: false` (M76).
 - **The template transform runs once, on the ROOT node.** Vue runs user `nodeTransforms` after its own, and its server compiler copies a component's slot children when it reaches the component; a per-element rewrite leaves the value in that copy, which is what `<Translate>` renders on the server (M42).
 - **Never register a value Vue marks dynamic** (VAR-7). A slot whose compiled vnodes carry `PatchFlags.TEXT`, or `PROPS`/`FULL_PROPS` on a translatable attribute, converts with `variable: true`: rendered from the catalog through `renderBlock`, no DOM class, no registration on the server or the client, and the core's `warnUnregistered(UNREGISTERED_REASON)` (M43, M46, M51, M52). It is not a fallback: `warnUnrenderedBlock` is for component and `v-html` slots only. Raw HTML alone is content and falls back to the DOM class, which registers it; beside a compiled variable the block is served as written and registers nothing, so the slot walk never stops at a fallback (M53, M54). On the client such a block still hands the core its host, with `register: false`: a read, which claims the host, registers nothing and never rejects under `requireCredentials` (M76).
+- **An author's exclusion is opaque, and a value inside one is marked, never a placeholder** (TOK-1, VAR-3). `slotToBlockNodes` reads `<DontTranslate>` (matched by identity) as the element it renders, its slot's compiled flags kept, and `translatedToVNodes` re-emits the original vnode, since excluded content renders from source (M79). A compiled value inside an excluded element — the core's `isTranslationExcluded`, or `NON_TRANSLATABLE_ELEMENTS` — is reported as `excluded`, apart from `variable`: `<Phrase>` registers, keyed `{m0o}{m0c}`; `<Translate>` registers nothing, because a block's content keeps excluded text as written (M80, M82). Inside a `data-ls-param` element a compiled value is marked, not a variable (M83). The transform never rewrites a value inside `translate="no"`, `data-notrans` or `<DontTranslate>` to `%name%`: it wraps it in `<span data-ls-param="NAME">`, named after the sentence's values with those names taken, so the sentence's names never move; inside code and notation it leaves the value as written (M81). Never copy the exclusion predicate here; read the core's.
+- **The init override passes `requireCredentials` through untouched.** Without credentials the app boots and renders source; with the option, `t()` throws at first use, never at boot (M84, M85).
 - **Placeholder names are the core's `derivePlaceholderNames()`.** `compiler.ts` only maps a template expression onto the core's `ExpressionShape`; never name values here. The shared `var-naming-vectors.json` runs through both halves (M44). Every expression goes to the core in order, one name per occurrence, and callers take names by position: never merge expressions by source text first. A value that names itself is one placeholder wherever it repeats; an unnameable one is its own placeholder each time (`{{ a + b }}` twice is `{value}` and `{value_2}`), since its source cannot say it evaluates alike twice (M75). A call whose callee cannot be spelled (`getA()(n)`, `fmt[a](x)`) maps to a call with callee `''`, named from its arguments (M78).
 - **Inside a server request scope, the components register during render.** The core defers it to `close()` and marks the block `collected` in the seed; the client, seeded with `seedCatalog(catalog, locale, seed)`, never sends it again (M47). `onMounted` never runs on a server.
 - **Bindings write no console output.** A block that falls back calls the core's `warnUnrenderedBlock(reason)`.

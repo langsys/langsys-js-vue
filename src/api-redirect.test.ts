@@ -16,12 +16,15 @@ import { LangsysApp, createLocaleStore } from './index.js';
 
 const DOUBLE = 'http://double.langsys.test/api';
 const requested: string[] = [];
+const headersOf = new Map<string, Record<string, string>>();
 
 beforeAll(() => {
     vi.stubGlobal(
         'fetch',
-        vi.fn(async (input: unknown) => {
-            requested.push(String(input instanceof Request ? input.url : input));
+        vi.fn(async (input: unknown, init?: { headers?: Record<string, string> }) => {
+            const url = String(input instanceof Request ? input.url : input);
+            requested.push(url);
+            headersOf.set(url, { ...(init?.headers ?? {}) });
             return new Response(
                 JSON.stringify({
                     status: true,
@@ -44,5 +47,21 @@ describe('WIRE-5 — apiUrl passed through the binding reaches the double', () =
         expect(requested.length, 'init issued no request at all').toBeGreaterThan(0);
         expect(requested.filter((u) => !u.startsWith(DOUBLE))).toEqual([]);
         expect(requested.some((u) => u.includes('api.langsys.dev'))).toBe(false);
+    });
+});
+
+/**
+ * ICU-5: a binding sends what its core sends, so a catalog request made through this binding's
+ * `init` carries the capability. Read at the network boundary, as above.
+ */
+describe('ICU-5 — the catalog request declares ICU rendering', () => {
+    it('the catalog request carries X-Langsys-Capabilities: icu', async () => {
+        const deadline = Date.now() + 5_000;
+        while (!requested.some((u) => u.includes('/translations?')) && Date.now() < deadline)
+            await new Promise((r) => setTimeout(r, 25));
+        const catalog = requested.filter((u) => u.includes('/translations?'));
+        // Control: the session fetched a catalog at all.
+        expect(catalog.length, 'no catalog request was made').toBeGreaterThan(0);
+        for (const url of catalog) expect(headersOf.get(url)?.['X-Langsys-Capabilities']).toBe('icu');
     });
 });

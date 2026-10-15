@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp, createVNode, defineComponent, h, type ComponentPublicInstance } from 'vue';
-import { createLocaleStore, LangsysApp, LangsysConfigurationError, Phrase, Translate } from './index.js';
+import { createLocaleStore, LangsysApp, LangsysConfigurationError, Phrase, Translate, useT } from './index.js';
 
 /**
  * WIRE-4 under `requireCredentials`: `init()` without a key leaves the client unconfigured, and the
@@ -41,8 +41,30 @@ function mountBlocks(): { caught: Caught[]; el: HTMLElement } {
     return { caught, el };
 }
 
+/** Mount a component that calls the framework's t(); return what its errorHandler receives. */
+function mountFirstUse(): Caught[] {
+    const caught: Caught[] = [];
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    mounted.push(el);
+    const Greeting = defineComponent({
+        name: 'Greeting',
+        setup() {
+            const t = useT();
+            return () => h('p', t.value('Hello {name}', 'UI', { name: 'Ana' }) as string);
+        },
+    });
+    const app = createApp(Greeting);
+    app.config.errorHandler = (error, instance: ComponentPublicInstance | null, info) =>
+        void caught.push({ error, component: instance?.$options.name, info });
+    app.mount(el);
+    return caught;
+}
+
 let before: ReturnType<typeof mountBlocks>;
 let after: ReturnType<typeof mountBlocks>;
+let firstUse: Caught[];
+let booted: boolean;
 
 beforeAll(async () => {
     // A page whose blocks mount before the app calls init(), as when init() runs in a layout's onMounted.
@@ -53,8 +75,10 @@ beforeAll(async () => {
         UserLocaleStore: createLocaleStore('it'),
         requireCredentials: true,
     });
+    booted = true;
     expect(res.status, 'control: the client is unconfigured').toBe(false);
     after = mountBlocks();
+    firstUse = mountFirstUse();
     await new Promise((r) => setTimeout(r, 50));
 });
 afterAll(() => mounted.forEach((el) => el.remove()));
@@ -84,5 +108,13 @@ describe('requireCredentials with no credentials, on the tree path', () => {
     it('the page still shows the text as written', () => {
         expect(after.el.textContent).toBe('HelloWorldHello worldGood night, Ana');
         expect(before.el.textContent).toBe('HelloWorldHello worldGood night, Ana');
+    });
+
+    it("the exception surfaces at first use, from the framework's t(), not at boot", () => {
+        expect(booted, 'init() resolved instead of throwing').toBe(true);
+        expect(firstUse).toHaveLength(1);
+        expect(firstUse[0]!.error).toBeInstanceOf(LangsysConfigurationError);
+        expect(firstUse[0]!.component).toBe('Greeting');
+        expect(firstUse[0]!.info).toMatch(/render/);
     });
 });

@@ -182,7 +182,7 @@ function changeLocale(next: string) {
 
 Limits:
 
-- **A block whose slot holds a component or `v-html` is served as source text.** The base SDK renders `<Translate>` and `<Phrase>` from their markup, and neither has markup to read until it renders. Such a block carries only an explicit `custom_id` in the served HTML, is translated in the browser after mount, and the base SDK logs a warning once per reason.
+- **A block whose slot holds a component or `v-html` is served as source text.** `<DontTranslate>` is the exception: it is read as the element it renders. The base SDK renders `<Translate>` and `<Phrase>` from their markup, and neither has markup to read until it renders. Such a block carries only an explicit `custom_id` in the served HTML, is translated in the browser after mount, and the base SDK logs a warning once per reason.
 
 ## `ssrTokenStrategy`
 

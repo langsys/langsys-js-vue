@@ -11,10 +11,12 @@ import {
     ref,
     Suspense,
     Teleport,
+    Text,
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
 import { slotToBlockNodes, translatedToVNodes, type TranslatedNode } from './block-vnodes.js';
+import { DontTranslate } from './components/DontTranslate.js';
 
 /**
  * The binding's half of the core's non-DOM block path (proposed `renderBlock`): a slot's vnodes
@@ -63,12 +65,18 @@ describe('slot vnodes → the core tree', () => {
             ok: false,
             reason: 'component',
             variable: false,
+            excluded: false,
         });
     });
 
     it('a <Suspense> in the slot is not converted, so its fallback never keys a block (SRV-5)', () => {
         const suspense = h(Suspense, null, { default: () => h('p', 'Pricing'), fallback: () => h('p', 'Loading…') });
-        expect(slotToBlockNodes([suspense])).toEqual({ ok: false, reason: 'component', variable: false });
+        expect(slotToBlockNodes([suspense])).toEqual({
+            ok: false,
+            reason: 'component',
+            variable: false,
+            excluded: false,
+        });
     });
 
     it('v-html is not converted — the block falls back', () => {
@@ -76,6 +84,7 @@ describe('slot vnodes → the core tree', () => {
             ok: false,
             reason: 'v-html',
             variable: false,
+            excluded: false,
         });
     });
 
@@ -184,6 +193,64 @@ describe('value markers (VAR-3) reach the core', () => {
                 ],
             },
         ]);
+    });
+});
+
+describe('excluded elements (TOK-1)', () => {
+    /** Vue's patch flag for text the compiler marks dynamic (runtime-core `PatchFlags.TEXT`). */
+    const value = (text: string) => createVNode(Text, null, text, 1);
+
+    it('<DontTranslate> is read as the element it renders, with its slot, and rendered back as itself', () => {
+        const dont = h(DontTranslate, { class: 'brand' }, () => ['Kangen', h('sup', '®')]);
+        const result = slotToBlockNodes([h('p', ['Built with ', dont])]);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.nodes).toEqual([
+            {
+                tag: 'p',
+                children: [
+                    { text: 'Built with ' },
+                    {
+                        tag: 'span',
+                        attrs: { translate: 'no', 'data-ls-dont-translate': '', class: 'brand' },
+                        children: [{ text: 'Kangen' }, { tag: 'sup', children: [{ text: '®' }] }],
+                    },
+                ],
+            },
+        ]);
+        // Pre-order: p, the <DontTranslate> itself, then the element its slot holds.
+        expect(result.elements.map((v) => v.type)).toEqual(['p', DontTranslate, 'sup']);
+        const [p] = translatedToVNodes(
+            [{ tag: 'p', source: 0, children: [{ text: 'Creato con ' }, { tag: 'span', source: 1, children: [] }] }],
+            result.elements
+        ) as VNode[];
+        expect(((p!.children as VNode[])[1] as VNode).type).toBe(DontTranslate);
+    });
+
+    it('a compiled value inside an excluded element is reported apart from a bare one; inside a value marker it is neither', () => {
+        const at = (child: VNode) => slotToBlockNodes([h('p', ['Signed in as ', child])]);
+        const flags = (r: ReturnType<typeof slotToBlockNodes>) => ({ variable: r.variable, excluded: r.excluded });
+        expect(flags(at(h('span', { translate: 'no' }, [value('ana@b.c')])))).toEqual({
+            variable: false,
+            excluded: true,
+        });
+        expect(flags(at(h('span', { 'data-notrans': '' }, [value('ana@b.c')])))).toEqual({
+            variable: false,
+            excluded: true,
+        });
+        expect(flags(at(h(DontTranslate, null, () => [value('ana@b.c')])))).toEqual({
+            variable: false,
+            excluded: true,
+        });
+        expect(
+            flags(at(h('span', { translate: 'no' }, [h('span', { 'data-ls-param': 'email' }, [value('ana@b.c')])])))
+        ).toEqual({ variable: false, excluded: false });
+        // Controls: the same value bare, and under data-notrans="false", which opts back in.
+        expect(flags(at(value('ana@b.c')))).toEqual({ variable: true, excluded: false });
+        expect(flags(at(h('span', { 'data-notrans': 'false' }, [value('ana@b.c')])))).toEqual({
+            variable: true,
+            excluded: false,
+        });
     });
 });
 

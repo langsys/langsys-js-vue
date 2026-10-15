@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { derivePlaceholderNames } from 'langsys-js-typescript/pure';
 import { expressionShape, langsysTransform, nameVariables, rewriteTCalls } from './compiler.js';
-import { LangsysApp, Phrase, Translate, useT } from './index.js';
+import { DontTranslate, LangsysApp, Phrase, Translate, useT } from './index.js';
 import { createRequestScope } from './server.js';
 import { slotToBlockNodes } from './block-vnodes.js';
 
@@ -44,6 +44,7 @@ async function serve(template: string, data: Record<string, unknown>, transform 
     const app = Vue.createSSRApp({ render: fn(code), data: () => data, setup });
     app.component('Translate', Translate);
     app.component('Phrase', Phrase);
+    app.component('DontTranslate', DontTranslate);
     return renderToString(app);
 }
 
@@ -58,7 +59,9 @@ async function registers(template: string, data: Record<string, unknown>, transf
                     ? `(${converted.reason})`
                     : converted.variable
                       ? '(variable)'
-                      : tokenizeTree(converted.nodes).tokens.join(' | ');
+                      : converted.excluded
+                        ? '(excluded)'
+                        : tokenizeTree(converted.nodes).tokens.join(' | ');
                 return Vue.h('i');
             };
         },
@@ -66,6 +69,7 @@ async function registers(template: string, data: Record<string, unknown>, transf
     const code = compile(template, { mode: 'function', nodeTransforms: transform ? [langsysTransform] : [] }).code;
     const app = Vue.createSSRApp({ render: fn(code), data: () => data });
     app.component('Translate', Probe);
+    app.component('DontTranslate', DontTranslate);
     await renderToString(app);
     return seen;
 }
@@ -268,6 +272,59 @@ describe('VAR-6 — interpolations inside <Translate> and <Phrase> become placeh
             onWarn: (w) => void warnings.push(w.message),
         });
         expect(warnings).toEqual([expect.stringContaining('registered as {value}')]);
+    });
+});
+
+describe('TOK-1 — a value inside an excluded element is marked, never a placeholder', () => {
+    const user = { user: { name: 'Ana', email: 'ana@b.c' } };
+    const EXCLUSIONS = {
+        'translate="no"': '<span translate="no">{{ user.email }}</span>',
+        'data-notrans': '<span data-notrans>{{ user.email }}</span>',
+        '<DontTranslate>': '<DontTranslate>{{ user.email }}</DontTranslate>',
+    };
+
+    for (const [label, child] of Object.entries(EXCLUSIONS)) {
+        it(`${label}: the value is served inside a value marker, and the block registers its text around it`, async () => {
+            const tpl = `<div><Translate category="UI"><p>Hi {{ user.name }}, signed in as ${child} today</p></Translate></div>`;
+            const html = await serve(tpl, user);
+            expect(html).toContain('<span data-ls-param="email">ana@b.c</span>');
+            expect(html).toContain('<p>Hi Ana, signed in as <span');
+            expect(html).not.toContain('%email%');
+            expect(await registers(tpl, user)).toBe('Hi {name}, signed in as | today');
+            // Control: without the transform the value is unmarked, so the block registers nothing.
+            expect(await registers(tpl, user, false)).toBe('(variable)');
+        });
+    }
+
+    it('an excluded value never changes the sentence’s own names', async () => {
+        const tpl =
+            '<div><Translate category="UI"><p>Hi {{ name }}, or <span translate="no">{{ name }}</span> here</p></Translate></div>';
+        const html = await serve(tpl, { name: 'Ana' });
+        expect(html).toContain(
+            '<p>Hi Ana, or <span translate="no"><span data-ls-param="name_2">Ana</span></span> here</p>'
+        );
+        expect(await registers(tpl, { name: 'Ana' })).toBe('Hi {name}, or | here');
+    });
+
+    it('code and notation keep a printed value as written, and a block holding one registers nothing', async () => {
+        const tpl = '<div><Translate category="UI"><p>Area <math><mi>{{ x }}</mi></math> units</p></Translate></div>';
+        const html = await serve(tpl, { x: 'r' });
+        expect(html).toContain('<math><mi>r</mi></math>');
+        expect(html).not.toContain('data-ls-param');
+        expect(await registers(tpl, { x: 'r' })).toBe('(excluded)');
+    });
+
+    it('compiler-sfc with ssr: true, a server build: the value is marked in the branch <Translate> reads', () => {
+        const out = compileTemplate({
+            source: '<div><Translate category="UI"><p>Signed in as <span translate="no">{{ user.email }}</span></p></Translate></div>',
+            filename: 'A.vue',
+            id: 'a',
+            ssr: true,
+            compilerOptions: { nodeTransforms: [langsysTransform] },
+        });
+        expect(out.errors).toEqual([]);
+        expect(out.code).toContain('data-ls-param');
+        expect(out.code).not.toContain('%email%');
     });
 });
 

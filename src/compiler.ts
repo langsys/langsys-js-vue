@@ -28,7 +28,14 @@
  * (`derivePlaceholderNames()` from `langsys-js-typescript/pure`), so every SDK names a value alike.
  */
 
-import { derivePlaceholderNames, type ExpressionShape, type NamedExpression } from 'langsys-js-typescript/pure';
+import { isTranslationExcluded } from 'langsys-js-typescript';
+import {
+    derivePlaceholderNames,
+    NON_TRANSLATABLE_ELEMENTS,
+    VAR_PARAM_ATTR,
+    type ExpressionShape,
+    type NamedExpression,
+} from 'langsys-js-typescript/pure';
 
 /** The compiler's node types this transform reads (`@vue/compiler-core` `NodeTypes`). */
 const ROOT = 0;
@@ -36,10 +43,15 @@ const ELEMENT = 1;
 const TEXT = 2;
 const SIMPLE_EXPRESSION = 4;
 const INTERPOLATION = 5;
+const ATTRIBUTE = 6;
 const DIRECTIVE = 7;
+/** Element tag types (`@vue/compiler-core` `ElementTypes`). */
+const PLAIN_ELEMENT = 0;
 const COMPONENT = 1;
 
 const HOSTS = new Set(['Translate', 'Phrase']);
+/** `<DontTranslate>` renders a `translate="no"` element around its slot; the transform reads it as one. */
+const DONT_TRANSLATE = new Set(['DontTranslate', 'dont-translate']);
 const BLOCKING_DIRECTIVES = new Set(['if', 'else', 'else-if', 'for', 'html', 'text', 'slot']);
 const IDENT = '[A-Za-z_$][\\w$]*';
 
@@ -197,6 +209,7 @@ interface AstNode {
     name?: string;
     arg?: AstNode & { content?: string };
     exp?: AstNode & { content?: string };
+    value?: AstNode;
     loc?: unknown;
     ast?: unknown;
 }
@@ -211,7 +224,8 @@ const expression = (content: string, isStatic: boolean, loc: unknown): AstNode =
 function blockedBy(children: AstNode[] = []): string | null {
     for (const c of children) {
         if (c.type !== ELEMENT) continue;
-        if (c.tagType === COMPONENT || c.tag === 'slot') return c.tag === 'slot' ? 'slot' : 'component';
+        if (c.tag === 'slot') return 'slot';
+        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '')) return 'component';
         const d = c.props?.find((p) => p.type === DIRECTIVE && BLOCKING_DIRECTIVES.has(p.name ?? ''));
         if (d) return `v-${d.name}`;
         const inner = blockedBy(c.children);
@@ -219,6 +233,50 @@ function blockedBy(children: AstNode[] = []): string | null {
     }
     return null;
 }
+
+/**
+ * How an element bounds the sentence (TOK-1): an author's exclusion — `translate="no"` or
+ * `data-notrans`, read by the core's own predicate, or `<DontTranslate>` — or code and notation.
+ * Neither enters the phrase. A value printed inside an author's exclusion is marked (VAR-3) so a
+ * block stores its name, not the value; inside code it is left as written.
+ */
+type Within = 'author' | 'code' | null;
+
+function within(outer: Within, node: AstNode): Within {
+    if (outer === 'code') return 'code';
+    if (DONT_TRANSLATE.has(node.tag ?? '')) return 'author';
+    if (node.tagType !== PLAIN_ELEMENT) return outer;
+    if (NON_TRANSLATABLE_ELEMENTS.includes((node.tag ?? '').toLowerCase())) return 'code';
+    const attr = (name: string) => node.props?.find((p) => p.type === ATTRIBUTE && p.name === name);
+    const excluded = isTranslationExcluded({
+        tagName: node.tag ?? '',
+        getAttribute: (name) => (attr(name) ? String(attr(name)!.value?.content ?? '') : null),
+        hasAttribute: (name) => attr(name) !== undefined,
+    });
+    return excluded ? 'author' : outer;
+}
+
+/** `<span data-ls-param="NAME">{{ value }}</span>`: VAR-3's attribute form around a printed value. */
+const marker = (name: string, value: AstNode): AstNode =>
+    ({
+        type: ELEMENT,
+        ns: 0,
+        tag: 'span',
+        tagType: PLAIN_ELEMENT,
+        props: [
+            {
+                type: ATTRIBUTE,
+                name: VAR_PARAM_ATTR,
+                nameLoc: value.loc,
+                value: { type: TEXT, content: name, loc: value.loc },
+                loc: value.loc,
+            },
+        ],
+        children: [value],
+        isSelfClosing: false,
+        codegenNode: undefined,
+        loc: value.loc,
+    }) as unknown as AstNode;
 
 function warnUnnamed(context: TransformContext | undefined, variables: NamedVariable[], loc: unknown): void {
     for (const v of variables.filter((x) => x.unnamed)) {
@@ -232,32 +290,43 @@ function warnUnnamed(context: TransformContext | undefined, variables: NamedVari
 function rewriteHost(host: AstNode, context: TransformContext | undefined): void {
     if (blockedBy(host.children)) return;
 
+    // The sentence's values, and the values printed inside an author's exclusion.
     const interpolations: string[] = [];
+    const excluded: string[] = [];
     const explicit = new Set<string>();
-    const collect = (children: AstNode[] = []) => {
+    const collect = (children: AstNode[] = [], bound: Within = null) => {
         for (const c of children) {
-            if (c.type === INTERPOLATION) interpolations.push(String((c.content as AstNode).content ?? ''));
-            else if (c.type === TEXT)
+            if (c.type === INTERPOLATION) {
+                const source = String((c.content as AstNode).content ?? '');
+                if (bound === null) interpolations.push(source);
+                else if (bound === 'author') excluded.push(source);
+            } else if (c.type === TEXT)
                 for (const m of String(c.content).matchAll(/%([a-z][a-z0-9_]*)%/g)) explicit.add(m[1]!);
-            else if (c.type === ELEMENT) collect(c.children);
+            else if (c.type === ELEMENT) collect(c.children, within(bound, c));
         }
     };
     collect(host.children);
-    if (!interpolations.length) return;
+    if (!interpolations.length && !excluded.length) return;
 
     const variables = nameVariables(interpolations, explicit);
-    warnUnnamed(context, variables, host.loc);
+    // Excluded values are no part of the sentence, so they never change its names.
+    const marked = nameVariables(excluded, [...explicit, ...variables.map((v) => v.name)]);
+    warnUnnamed(context, [...variables, ...marked], host.loc);
 
-    // The same walk as `collect`, so the k-th interpolation takes the k-th name.
+    // The same walk as `collect`, so the k-th interpolation of each kind takes the k-th name.
     let k = 0;
-    const rewrite = (children: AstNode[] = []): AstNode[] =>
+    let e = 0;
+    const rewrite = (children: AstNode[] = [], bound: Within = null): AstNode[] =>
         children.map((c) => {
-            if (c.type === INTERPOLATION)
-                return { type: TEXT, content: `%${variables[k++]!.name}%`, loc: c.loc } as AstNode;
-            if (c.type === ELEMENT) c.children = rewrite(c.children);
+            if (c.type === INTERPOLATION) {
+                if (bound === null) return { type: TEXT, content: `%${variables[k++]!.name}%`, loc: c.loc } as AstNode;
+                return bound === 'author' ? marker(marked[e++]!.name, c) : c;
+            }
+            if (c.type === ELEMENT) c.children = rewrite(c.children, within(bound, c));
             return c;
         });
     host.children = rewrite(host.children);
+    if (!variables.length) return;
 
     const props = host.props ?? [];
     const existing = props.find((p) => p.type === DIRECTIVE && p.name === 'bind' && p.arg?.content === 'params');
