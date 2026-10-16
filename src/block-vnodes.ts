@@ -11,9 +11,10 @@ import {
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
-import { isTranslationExcluded, tokenizeTree } from 'langsys-js-typescript';
+import { isTranslationExcluded, PHRASE_MARKER_ATTR, tokenizeTree, type ParamPrimitive } from 'langsys-js-typescript';
 import { NON_TRANSLATABLE_ELEMENTS, TRANSLATABLE_ATTRIBUTES, VAR_PARAM_ATTR } from 'langsys-js-typescript/pure';
 import { DontTranslate } from './components/DontTranslate.js';
+import { Phrase } from './components/Phrase.js';
 
 /**
  * Server rendering for `<Translate>` and `<Phrase>` (SRV-1, SRV-5, MARK-1) — the Vue half.
@@ -34,7 +35,13 @@ import { DontTranslate } from './components/DontTranslate.js';
 export type BlockNode =
     | { text: string }
     | { comment: string }
-    | { tag: string; attrs?: Record<string, string | true>; children?: BlockNode[] };
+    | {
+          tag: string;
+          attrs?: Record<string, string | true>;
+          children?: BlockNode[];
+          /** A nested host's own params: the core renders it with them in place of the block's. */
+          params?: Record<string, ParamPrimitive>;
+      };
 
 /**
  * A node of the core's translated copy. An element's `source` is the document-order (pre-order)
@@ -135,10 +142,17 @@ function isExcluded(vnode: VNode): boolean {
     );
 }
 
+/** What the tree carries for a comment vnode: a value marker (VAR-3) in its comment form, or nothing. */
+function commentNodes(vnode: VNode): BlockNode[] {
+    const text = String(vnode.children ?? '');
+    return /^(ls:[a-z][a-z0-9_]*|\/ls)$/.test(text) ? [{ comment: text }] : [];
+}
+
 /**
  * Whether the core's reader takes an element as a value marker (VAR-3). A marker alone in an element
  * is its own `{NAME}` token; a name outside VAR-2's grammar, or anything but text inside, makes it
- * ordinary markup. Asked of the core's tokenizer, over the element's shape, rather than re-read here.
+ * ordinary markup. Asked of the core's tokenizer, over the element's shape — the one the block sends
+ * — rather than re-read here.
  */
 function isValueMarker(vnode: VNode): boolean {
     const name = String(vnode.props?.[VAR_PARAM_ATTR] ?? '').trim();
@@ -149,7 +163,7 @@ function isValueMarker(vnode: VNode): boolean {
             if (child === null || child === undefined || typeof child === 'boolean') return [];
             if (!isVNode(child)) return shape(child);
             if (child.type === Text) return [{ text: 'x' }];
-            if (child.type === Comment) return [{ comment: String(child.children ?? '') }];
+            if (child.type === Comment) return commentNodes(child);
             if (child.type === Fragment) return shape(child.children);
             return [{ tag: typeof child.type === 'string' ? child.type : 'span', children: shape(child.children) }];
         });
@@ -173,6 +187,34 @@ function dontTranslateElement(vnode: VNode): VNode {
     return h(tag ?? 'span', mergeProps({ translate: 'no', 'data-ls-dont-translate': '' }, attrs), slots?.default?.());
 }
 
+/** The core's attribute for a nested host's own category (`hostCategory`); empty is a category of its own. */
+const CATEGORY_MARKER_ATTR = 'data-ls-category';
+
+/**
+ * The phrase host a nested `<Phrase>` renders, built from its vnode for the enclosing block's tree:
+ * phrase-marked, with its own category (the default `''` included, so the block's registration
+ * records the phrase where the component does), the attributes that fall through to it, and its
+ * slot's content. Its params go on the tree node.
+ */
+function phraseHost(vnode: VNode): VNode {
+    const {
+        tag,
+        category,
+        params: _params,
+        ...attrs
+    } = (vnode.props ?? {}) as {
+        tag?: string;
+        category?: string;
+        params?: unknown;
+    } & Record<string, unknown>;
+    const slots = vnode.children as { default?: () => VNodeArrayChildren } | null;
+    return h(
+        tag ?? 'span',
+        mergeProps({ [PHRASE_MARKER_ATTR]: '', [CATEGORY_MARKER_ATTR]: category ?? '' }, attrs),
+        slots?.default?.()
+    );
+}
+
 /**
  * Convert a default slot's vnodes into the core's tree.
  *
@@ -188,18 +230,23 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
     let failure: UnrenderedReason | null = null;
     let variable = false;
     let excluded = false;
-    // A compiled value inside a value marker's element (VAR-3) is named, not a variable.
-    const dynamic = (inExcluded: boolean, inMarker: boolean): void => {
+    /**
+     * Where the walk is: inside an excluded element, inside a value marker's element (VAR-3), whose
+     * compiled value is named, not a variable, and inside a nested `<Phrase>`, a unit of its own
+     * the enclosing block leaves out (MARK-4): a value excluded there never reaches the block.
+     */
+    interface At {
+        inExcluded: boolean;
+        inMarker: boolean;
+        inPhrase: boolean;
+    }
+    const dynamic = ({ inExcluded, inMarker, inPhrase }: At): void => {
         if (inMarker) return;
-        if (inExcluded) excluded = true;
-        else variable = true;
+        if (!inExcluded) variable = true;
+        else if (!inPhrase) excluded = true;
     };
 
-    const walk = (
-        input: VNodeArrayChildren | string | undefined,
-        inExcluded: boolean,
-        inMarker: boolean
-    ): BlockNode[] => {
+    const walk = (input: VNodeArrayChildren | string | undefined, at: At): BlockNode[] => {
         const out: BlockNode[] = [];
         const push = (node: BlockNode): void => void out.push(node);
         const visit = (child: unknown): void => {
@@ -208,34 +255,45 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             if (Array.isArray(child)) return child.forEach(visit);
             if (!isVNode(child)) return;
             const vnode = child as VNode;
-            // A value marker (VAR-3) goes to the core as the tree form; any other comment is dropped.
-            if (vnode.type === Comment) {
-                const text = String(vnode.children ?? '');
-                return /^(ls:[a-z][a-z0-9_]*|\/ls)$/.test(text) ? push({ comment: text }) : undefined;
-            }
+            if (vnode.type === Comment) return void out.push(...commentNodes(vnode));
             if (vnode.type === Text) {
-                if (isDynamicText(vnode)) dynamic(inExcluded, inMarker);
+                if (isDynamicText(vnode)) dynamic(at);
                 return push({ text: String(vnode.children ?? '') });
             }
             if (vnode.type === Fragment) return (vnode.children as VNodeArrayChildren | null)?.forEach(visit);
-            if (vnode.type === Teleport) return void teleports.push(vnode);
+            // A nested <Phrase> renders its own teleports.
+            if (vnode.type === Teleport) return void (at.inPhrase ? undefined : teleports.push(vnode));
             // <DontTranslate> is read as the element it renders, and rendered back as itself. An
             // attribute bound on it falls through to that element.
             if (vnode.type === DontTranslate) {
-                if (hasDynamicTranslatableAttribute(vnode)) dynamic(true, inMarker);
+                if (hasDynamicTranslatableAttribute(vnode)) dynamic({ ...at, inExcluded: true });
                 return element(dontTranslateElement(vnode), vnode);
+            }
+            // A nested <Phrase> is read as the phrase host it renders, carrying its own params, and
+            // rendered back as itself: it renders and registers its own phrase.
+            if (vnode.type === Phrase) {
+                const params = vnode.props?.params as Record<string, ParamPrimitive> | undefined;
+                return element(phraseHost(vnode), vnode, { ...at, inPhrase: true }, params);
             }
             // A fallback does not end the walk: a compiled variable anywhere else in the slot still
             // decides that nothing registers.
             if (typeof vnode.type !== 'string') return void (failure ??= 'component');
             element(vnode, vnode);
         };
-        const element = (vnode: VNode, original: VNode): void => {
+        const element = (
+            vnode: VNode,
+            original: VNode,
+            within: At = at,
+            params?: Record<string, ParamPrimitive>
+        ): void => {
             const props = vnode.props ?? {};
             if ('innerHTML' in props || 'textContent' in props) return void (failure ??= 'v-html');
-            const excludedHere = inExcluded || isExcluded(vnode);
-            const markedHere = inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode));
-            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(excludedHere, markedHere);
+            const here: At = {
+                inExcluded: within.inExcluded || isExcluded(vnode),
+                inMarker: within.inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode)),
+                inPhrase: within.inPhrase,
+            };
+            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(here);
 
             const attrs: Record<string, string | true> = {};
             for (const [name, value] of Object.entries(props)) {
@@ -244,11 +302,12 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
                 else if (value === true) attrs[name] = true;
             }
             elements.push(original); // pre-order: the element's index before its descendants'
-            const kids = walk(vnode.children as VNodeArrayChildren | string | undefined, excludedHere, markedHere);
+            const kids = walk(vnode.children as VNodeArrayChildren | string | undefined, here);
             push({
                 tag: vnode.type as string,
                 ...(Object.keys(attrs).length ? { attrs } : {}),
                 ...(kids.length ? { children: kids } : {}),
+                ...(params ? { params } : {}),
             });
         };
         if (typeof input === 'string') return [{ text: input }];
@@ -256,7 +315,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
         return out;
     };
 
-    const nodes = walk(children, false, false);
+    const nodes = walk(children, { inExcluded: false, inMarker: false, inPhrase: false });
     return failure
         ? { ok: false, reason: failure, variable, excluded }
         : { ok: true, nodes, elements, teleports, variable, excluded };
@@ -299,6 +358,8 @@ export function translatedToVNodes(nodes: readonly TranslatedNode[], elements: V
         if ('text' in node) return node.text;
         if ('comment' in node) return createCommentVNode(node.comment);
         const original = node.source === undefined ? undefined : elements[node.source];
+        // A nested <Phrase> renders and registers its own phrase.
+        if (original?.type === Phrase) return cloneVNode(original);
         const children = translatedToVNodes(node.children ?? [], elements);
         // A <DontTranslate> renders itself around the content the core rendered for it: its source,
         // with a phrase's params filled. Its own slot would render the source again, unfilled.

@@ -69,6 +69,7 @@ async function registers(template: string, data: Record<string, unknown>, transf
     const code = compile(template, { mode: 'function', nodeTransforms: transform ? [langsysTransform] : [] }).code;
     const app = Vue.createSSRApp({ render: fn(code), data: () => data });
     app.component('Translate', Probe);
+    app.component('Phrase', Phrase);
     app.component('DontTranslate', DontTranslate);
     await renderToString(app);
     return seen;
@@ -334,6 +335,17 @@ describe('TOK-1 — a value inside an excluded element is marked, never a placeh
         expect(await registers(tpl, { ...user, mode: 'yes' })).toBe('(variable)');
     });
 
+    it.each([
+        ['an object bound with v-bind', '<span v-bind="attrs">', { attrs: { translate: 'no' } }],
+        ['a dynamic argument', '<span :[name]="mode">', { name: 'translate', mode: 'no' }],
+    ])('%s can bind the exclusion too: the value is left as written', async (_, open, bind) => {
+        const tpl = `<div><Translate category="UI"><p>Signed in as ${open}{{ user.email }}</span> today</p></Translate></div>`;
+        const html = await serve(tpl, { ...user, ...bind });
+        expect(html).toContain('<span translate="no">ana@b.c</span>');
+        expect(html).not.toContain('%email%');
+        expect(await registers(tpl, { ...user, ...bind })).toBe('(excluded)');
+    });
+
     it('compiler-sfc with ssr: true, a server build: the value is marked in the branch <Translate> reads', () => {
         const out = compileTemplate({
             source: '<div><Translate category="UI"><p>Signed in as <span translate="no">{{ user.email }}</span></p></Translate></div>',
@@ -345,6 +357,23 @@ describe('TOK-1 — a value inside an excluded element is marked, never a placeh
         expect(out.errors).toEqual([]);
         expect(out.code).toContain('data-ls-param');
         expect(out.code).not.toContain('%email%');
+    });
+});
+
+describe('MARK-4 — a <Phrase> nested in a <Translate>', () => {
+    const data = { user: { name: 'Ana' }, owner: { name: 'Bo' } };
+    const tpl =
+        '<div><Translate category="UI"><p>Hi {{ user.name }}</p><p>Welcome back</p><Phrase category="UI">By {{ owner.name }}</Phrase></Translate></div>';
+
+    it('each host is rewritten in its own name space: the block registers its own text, and both values render', async () => {
+        expect(await registers(tpl, data)).toBe('Hi {name} | Welcome back');
+        const html = await serve(tpl, data);
+        expect(html).toContain('<p>Hi Ana</p><p>Welcome back</p>');
+        expect(html).toContain('>By Bo</span>');
+    });
+
+    it('control: without the transform the values stay compiled, and the block registers nothing', async () => {
+        expect(await registers(tpl, data, false)).toBe('(variable)');
     });
 });
 

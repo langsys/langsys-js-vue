@@ -38,7 +38,11 @@ function mountFor(template: string, user: string, transform: boolean, cms = ''):
     document.body.appendChild(el);
     const app = Vue.createApp({
         render: new Function('Vue', code)(Vue),
-        data: () => ({ user: { firstName: user, email: `${user.toLowerCase()}@mail.test` }, cms }),
+        data: () => ({
+            user: { firstName: user, email: `${user.toLowerCase()}@mail.test` },
+            owner: { name: `${user} Sr` },
+            cms,
+        }),
     });
     app.component('Translate', Translate);
     app.component('Phrase', Phrase);
@@ -209,5 +213,65 @@ describe('a value inside an excluded element, for two users', () => {
         for (const k of Object.keys(SHAPES)) expect((await inCategory(`TB2${k}`)).blocks).toEqual([]);
         expectShown(els);
         await expectNoValueStored();
+    });
+});
+
+/**
+ * MARK-4 and VAR-2: a `<Phrase>` nested in a `<Translate>`, each holding a value. The nested host
+ * is left out of the block's unit and registers itself; the block registers its own text around
+ * the host's shell, and the phrase keys as it does standing alone, each with its own values.
+ */
+describe('a <Phrase> nested in a <Translate>, both holding a value', () => {
+    const inCategory = async (category: string) => {
+        const p1 = (await fx.state()).projects.p1;
+        return {
+            phrases: p1.phrases.filter((x) => x.category === category).map((x) => x.phrase),
+            blocks: p1.blocks.filter((x) => x.category === category).map((x) => x.content),
+        };
+    };
+
+    it('with the transform, the block registers its text around the phrase, which keys as it does alone', async () => {
+        const tpl =
+            '<div><Translate category="NB"><p>Hi {{ user.firstName }}</p><p>Welcome back</p><Phrase category="NB">By {{ owner.name }}</Phrase></Translate>' +
+            '<Phrase category="NS">By {{ owner.name }}</Phrase><Phrase category="UI">Static NB</Phrase></div>';
+        const els = [mountFor(tpl, 'Ana', true), mountFor(tpl, 'Bo', true)];
+        await flushedBeside('Static NB');
+        const nested = await inCategory('NB');
+        expect(nested.blocks).toHaveLength(1);
+        // The nested phrase is left out of the block's unit: its host stays as an empty shell
+        // carrying its own category.
+        expect(nested.blocks).toEqual([
+            '<p>Hi {first_name}</p><p>Welcome back</p><span data-ls-phrase="" data-ls-category="NB"></span>',
+        ]);
+        expect(nested.phrases).toEqual(['By {name}']);
+        expect((await inCategory('NS')).phrases).toEqual(['By {name}']);
+        expect(els[0]!.querySelector('translate')?.textContent).toBe('Hi AnaWelcome backBy Ana Sr');
+        expect(els[1]!.querySelector('translate')?.textContent).toBe('Hi BoWelcome backBy Bo Sr');
+        const text = await storedText();
+        for (const value of ['Ana', 'Bo']) expect(text).not.toMatch(new RegExp(`\\b${value}\\b`));
+    });
+
+    it('a nested <Phrase> with a category of its own registers only under it', async () => {
+        const tpl =
+            '<div><Translate category="NO"><p>Hi {{ user.firstName }}</p><p>See you</p><Phrase category="NP">By {{ owner.name }}</Phrase></Translate>' +
+            '<Phrase category="UI">Static NO</Phrase></div>';
+        mountFor(tpl, 'Ana', true);
+        await flushedBeside('Static NO');
+        expect((await inCategory('NO')).phrases).toEqual([]);
+        expect((await inCategory('NO')).blocks).toHaveLength(1);
+        expect((await inCategory('NP')).phrases).toEqual(['By {name}']);
+    });
+
+    it('control: without values, the block registers its text around the phrase too', async () => {
+        const tpl =
+            '<div><Translate category="NC"><p>Hello there</p><p>Glad you came</p><Phrase category="NC">By the team</Phrase></Translate>' +
+            '<Phrase category="UI">Static NC</Phrase></div>';
+        mountFor(tpl, 'Ana', true);
+        await flushedBeside('Static NC');
+        const nested = await inCategory('NC');
+        expect(nested.blocks).toHaveLength(1);
+        expect(nested.blocks[0]).toContain('<p>Hello there</p><p>Glad you came</p>');
+        expect(nested.blocks[0]).not.toContain('By the team');
+        expect(nested.phrases).toEqual(['By the team']);
     });
 });

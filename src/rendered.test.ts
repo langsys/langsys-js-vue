@@ -269,4 +269,29 @@ describe('useWriteEnabled — a subtree that hydrates late', () => {
         later.remove();
         first.unmount();
     });
+
+    it('a component that calls it from a hook once it has mounted is not hydrating: it shows the real value', async () => {
+        signal.set(true);
+        const { createApp, defineComponent, h, nextTick, onMounted, shallowRef, useWriteEnabled } = await load();
+        const Probe = defineComponent({
+            setup() {
+                const w = shallowRef<{ readonly value: boolean | undefined }>();
+                onMounted(() => void (w.value = useWriteEnabled()));
+                return () => h('span', String(w.value?.value));
+            },
+        });
+        const first = createApp(Probe); // the page's first caller, before any handover
+        first.mount(host);
+        await vi.runAllTimersAsync();
+        expect(host.textContent).toBe('true');
+        const later = document.createElement('div');
+        document.body.appendChild(later);
+        const second = createApp(Probe); // a caller after the handover
+        second.mount(later);
+        await nextTick();
+        expect(later.textContent).toBe('true');
+        second.unmount();
+        later.remove();
+        first.unmount();
+    });
 });

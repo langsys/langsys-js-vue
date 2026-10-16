@@ -28,9 +28,9 @@
  * (`derivePlaceholderNames()` from `langsys-js-typescript/pure`), so every SDK names a value alike.
  */
 
-import { isTranslationExcluded } from 'langsys-js-typescript';
 import {
     derivePlaceholderNames,
+    isTranslationExcluded,
     NON_TRANSLATABLE_ELEMENTS,
     VAR_PARAM_ATTR,
     type ExpressionShape,
@@ -50,6 +50,8 @@ const PLAIN_ELEMENT = 0;
 const COMPONENT = 1;
 
 const HOSTS = new Set(['Translate', 'Phrase']);
+/** A `<Phrase>` inside another host: its values are named in its own space and go in its own params. */
+const isNestedPhrase = (node: AstNode): boolean => node.tagType === COMPONENT && node.tag === 'Phrase';
 /** `<DontTranslate>` renders a `translate="no"` element around its slot; the transform reads it as one. */
 const DONT_TRANSLATE = new Set(['DontTranslate', 'dont-translate']);
 const BLOCKING_DIRECTIVES = new Set(['if', 'else', 'else-if', 'for', 'html', 'text', 'slot']);
@@ -208,7 +210,7 @@ interface AstNode {
     children?: AstNode[];
     props?: AstNode[];
     name?: string;
-    arg?: AstNode & { content?: string };
+    arg?: AstNode & { content?: string; isStatic?: boolean };
     exp?: AstNode & { content?: string };
     value?: AstNode;
     loc?: unknown;
@@ -226,9 +228,11 @@ function blockedBy(children: AstNode[] = []): string | null {
     for (const c of children) {
         if (c.type !== ELEMENT) continue;
         if (c.tag === 'slot') return 'slot';
-        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '')) return 'component';
         const d = c.props?.find((p) => p.type === DIRECTIVE && BLOCKING_DIRECTIVES.has(p.name ?? ''));
         if (d) return `v-${d.name}`;
+        // A nested <Phrase> is a unit of its own (MARK-4): its content is its own rewrite's.
+        if (isNestedPhrase(c)) continue;
+        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '')) return 'component';
         const inner = blockedBy(c.children);
         if (inner) return inner;
     }
@@ -255,10 +259,14 @@ function boundBy(outer: Within, node: AstNode): Within {
     if (DONT_TRANSLATE.has(node.tag ?? '')) return 'author';
     if (node.tagType !== PLAIN_ELEMENT) return outer;
     if (NON_TRANSLATABLE_ELEMENTS.includes((node.tag ?? '').toLowerCase())) return 'code';
-    // A bound translate or data-notrans is known only when the page renders: its values are left as
-    // written, for the runtime to read as excluded or as variables.
+    // A bound translate or data-notrans is known only when the page renders, and so is anything an
+    // object (v-bind="attrs") or a dynamic argument binds: the element's values are left as written,
+    // for the runtime to read as excluded or as variables.
     const bindsExclusion = node.props?.some(
-        (p) => p.type === DIRECTIVE && p.name === 'bind' && ['translate', 'data-notrans'].includes(p.arg?.content ?? '')
+        (p) =>
+            p.type === DIRECTIVE &&
+            p.name === 'bind' &&
+            (!p.arg?.isStatic || ['translate', 'data-notrans'].includes(p.arg.content ?? ''))
     );
     if (bindsExclusion) return 'code';
     const attr = (name: string) => node.props?.find((p) => p.type === ATTRIBUTE && p.name === name);
@@ -316,7 +324,7 @@ function rewriteHost(host: AstNode, context: TransformContext | undefined): void
                 else if (bound === 'author') excluded.push(source);
             } else if (c.type === TEXT)
                 for (const m of String(c.content).matchAll(/%([a-z][a-z0-9_]*)%/g)) explicit.add(m[1]!);
-            else if (c.type === ELEMENT) collect(c.children, within(bound, c));
+            else if (c.type === ELEMENT && !isNestedPhrase(c)) collect(c.children, within(bound, c));
         }
     };
     collect(host.children);
@@ -336,7 +344,7 @@ function rewriteHost(host: AstNode, context: TransformContext | undefined): void
                 if (bound === null) return { type: TEXT, content: `%${variables[k++]!.name}%`, loc: c.loc } as AstNode;
                 return bound === 'author' ? marker(marked[e++]!.name, c) : c;
             }
-            if (c.type === ELEMENT) c.children = rewrite(c.children, within(bound, c));
+            if (c.type === ELEMENT && !isNestedPhrase(c)) c.children = rewrite(c.children, within(bound, c));
             return c;
         });
     host.children = rewrite(host.children);

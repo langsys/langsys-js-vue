@@ -15,6 +15,8 @@ Around each request:
 
 The seed must be synchronous. `seedCatalog()` returns nothing and needs no `await`. `LangsysApp.init({ initialTranslations })` is not a substitute: `init()` applies it only after its authorization round trip, and by then the first client render has happened.
 
+A server that renders for more than one Langsys project gives each scope its own credentials: `createRequestScope({ locale, url, credentials: { projectid, key } })`, or the same option to `renderInRequestScope`. The render reads that project's catalog and sends under that key, and two scopes in one process never share a credential, however their requests interleave. A scope given none uses the ones `init()` set.
+
 The server helpers live in a server-only entry, `langsys-js-vue/server`, which never reaches a browser bundle.
 
 ## Server setup

@@ -190,8 +190,10 @@ export function useWriteEnabled(): Readonly<ShallowRef<boolean | undefined>> {
     // later mounts see the real value at once. A component Vue is still
     // hydrating is the exception: an async setup under <Suspense> can finish
     // after the handover and still render against the server's markup. Vue
-    // gives a hydrating component's vnode the server's element before setup.
-    const hydrating = Boolean(getCurrentInstance()?.vnode.el);
+    // gives a hydrating component's vnode the server's element before setup;
+    // a call from a hook once the component has mounted finds one there too.
+    const instance = getCurrentInstance();
+    const hydrating = Boolean(instance && !instance.isMounted && instance.vnode.el);
     if (pastHydration && !hydrating) return useSignal(writeEnabled);
 
     // Hydration pass: publish the same "unknown" the server rendered so the

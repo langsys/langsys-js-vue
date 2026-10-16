@@ -293,6 +293,35 @@ describe('<Phrase> through renderBlock', () => {
     });
 });
 
+describe('a <Phrase> nested in a block', () => {
+    it('renders a teleport its slot holds once', async () => {
+        seed(IT, 'it');
+        const target = document.createElement('div');
+        target.id = 'tp2';
+        document.body.appendChild(target);
+        const el = document.createElement('div');
+        document.body.appendChild(el);
+        const app = createApp(
+            defineComponent({
+                render: () =>
+                    h(Translate, { category: 'UI' }, () => [
+                        h('p', 'Pricing'),
+                        h(Phrase, { category: 'UI' }, () => ['Hello ', h(Teleport, { to: '#tp2' }, [h('b', 'TP')])]),
+                    ]),
+            })
+        );
+        app.mount(el);
+        cleanups.push(() => {
+            app.unmount();
+            el.remove();
+            target.remove();
+        });
+        await new Promise((r) => setTimeout(r, 20));
+        expect(target.innerHTML).toBe('<b>TP</b>');
+        expect(el.querySelector('p')?.textContent).toBe('Prezzi');
+    });
+});
+
 describe('<DontTranslate> inside a block', () => {
     it('renders a teleport its slot holds once', async () => {
         seed(IT, 'it');

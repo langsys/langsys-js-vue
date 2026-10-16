@@ -17,6 +17,7 @@ import {
 } from 'vue';
 import { slotToBlockNodes, translatedToVNodes, type TranslatedNode } from './block-vnodes.js';
 import { DontTranslate } from './components/DontTranslate.js';
+import { Phrase } from './components/Phrase.js';
 
 /**
  * The binding's half of the core's non-DOM block path (proposed `renderBlock`): a slot's vnodes
@@ -257,9 +258,59 @@ describe('excluded elements (TOK-1)', () => {
             variable: false,
             excluded: false,
         });
+        // The comment Vue leaves for an inactive v-if is not sent, so the core reads the marker without it.
+        const inactive = at(h('span', { 'data-ls-param': 'name' }, [value('Ana'), createCommentVNode('v-if')]));
+        expect(flags(inactive)).toEqual({ variable: false, excluded: false });
+        expect(inactive.ok && inactive.nodes).toEqual([
+            {
+                tag: 'p',
+                children: [
+                    { text: 'Signed in as ' },
+                    { tag: 'span', attrs: { 'data-ls-param': 'name' }, children: [{ text: 'Ana' }] },
+                ],
+            },
+        ]);
         // Controls: the same value bare, and under data-notrans="false", which opts back in.
         expect(flags(at(value('ana@b.c')))).toEqual({ variable: true, excluded: false });
         expect(flags(at(h('span', { 'data-notrans': 'false' }, [value('ana@b.c')])))).toEqual({
+            variable: true,
+            excluded: false,
+        });
+    });
+});
+
+describe('a nested <Phrase> (MARK-4, VAR-2)', () => {
+    it('is read as the phrase host it renders, with its own category and params, and rendered back as itself', () => {
+        const nested = h(Phrase, { category: 'Account', params: { name: 'Bo' } }, () => ['By %name%']);
+        const result = slotToBlockNodes([h('p', 'Hello'), nested]);
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.nodes).toEqual([
+            { tag: 'p', children: [{ text: 'Hello' }] },
+            {
+                tag: 'span',
+                attrs: { 'data-ls-phrase': '', 'data-ls-category': 'Account' },
+                params: { name: 'Bo' },
+                children: [{ text: 'By %name%' }],
+            },
+        ]);
+        expect(result.elements.map((v) => v.type)).toEqual(['p', Phrase]);
+        const back = translatedToVNodes([{ tag: 'span', source: 1, children: [{ text: 'x' }] }], result.elements);
+        expect((back[0] as VNode).type).toBe(Phrase);
+    });
+
+    it('carries the default category, so the block records the phrase where the component does', () => {
+        const result = slotToBlockNodes([h(Phrase, null, () => ['By the team'])]);
+        expect(result.ok && result.nodes[0]).toMatchObject({ attrs: { 'data-ls-category': '' } });
+    });
+
+    it('a value excluded inside it is the phrase’s; a bare one still keeps the block from registering', () => {
+        const value = (text: string) => createVNode(Text, null, text, 1);
+        const flags = (r: ReturnType<typeof slotToBlockNodes>) => ({ variable: r.variable, excluded: r.excluded });
+        expect(
+            flags(slotToBlockNodes([h(Phrase, null, () => ['By ', h('span', { translate: 'no' }, [value('a@b.c')])])]))
+        ).toEqual({ variable: false, excluded: false });
+        expect(flags(slotToBlockNodes([h(Phrase, null, () => ['By ', value('Bo')])]))).toEqual({
             variable: true,
             excluded: false,
         });

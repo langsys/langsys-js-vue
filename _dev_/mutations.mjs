@@ -635,9 +635,8 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: 'return /^(ls:[a-z][a-z0-9_]*|\\/ls)$/.test(text) ? push({ comment: text }) : undefined;',
-                replace:
-                    'return /^(ls-never:[a-z][a-z0-9_]*|\\/ls)$/.test(text) ? push({ comment: text }) : undefined;',
+                find: 'return /^(ls:[a-z][a-z0-9_]*|\\/ls)$/.test(text) ? [{ comment: text }] : [];',
+                replace: 'return /^(ls-never:[a-z][a-z0-9_]*|\\/ls)$/.test(text) ? [{ comment: text }] : [];',
             },
         ],
         check: vitest('src/block-vnodes.test.ts'),
@@ -678,7 +677,7 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: '            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(excludedHere, markedHere);\n',
+                find: '            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) dynamic(here);\n',
                 replace:
                     "            if (isDynamicText(vnode) || hasDynamicTranslatableAttribute(vnode)) return void (failure = 'component');\n",
             },
@@ -882,7 +881,7 @@ export const MUTATIONS = [
         file: 'src/composables.ts',
         edits: [
             {
-                find: '    const hydrating = Boolean(getCurrentInstance()?.vnode.el);\n',
+                find: '    const hydrating = Boolean(instance && !instance.isMounted && instance.vnode.el);\n',
                 replace: '    const hydrating = false;\n',
             },
         ],
@@ -895,8 +894,8 @@ export const MUTATIONS = [
         file: 'src/composables.ts',
         edits: [
             {
-                find: '    const hydrating = Boolean(getCurrentInstance()?.vnode.el);\n',
-                replace: '    const hydrating = Boolean(getCurrentInstance());\n',
+                find: '    const hydrating = Boolean(instance && !instance.isMounted && instance.vnode.el);\n',
+                replace: '    const hydrating = Boolean(instance);\n',
             },
         ],
         check: vitest('src/rendered.test.ts'),
@@ -1019,7 +1018,7 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: '        if (inExcluded) excluded = true;\n        else variable = true;\n',
+                find: '        if (!inExcluded) variable = true;\n        else if (!inPhrase) excluded = true;\n',
                 replace: '        variable = true;\n',
             },
         ],
@@ -1132,8 +1131,141 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: '            const markedHere = inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode));\n',
-                replace: '            const markedHere = inMarker || VAR_PARAM_ATTR in props;\n',
+                find: '                inMarker: within.inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode)),\n',
+                replace: '                inMarker: within.inMarker || VAR_PARAM_ATTR in props,\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M91',
+        rules: 'MARK-4, VAR-1',
+        what: 'a nested <Phrase> is read as a component, so a <Translate> holding one and a value falls back and registers nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            if (vnode.type === Phrase) {\n',
+                replace: '            if (vnode.type === Phrase && false) {\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M92',
+        rules: 'MARK-4, VAR-6',
+        what: 'a nested <Phrase> stops the transform, so the block around it keeps its compiled value and registers nothing',
+        file: 'src/compiler.ts',
+        edits: [{ find: '        if (isNestedPhrase(c)) continue;\n', replace: '' }],
+        check: vitest('src/compiler.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M93',
+        rules: 'VAR-2, MARK-4',
+        what: "the block's rewrite names a nested <Phrase>'s values in the block's space, so the phrase loses its own params",
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '            else if (c.type === ELEMENT && !isNestedPhrase(c)) collect(c.children, within(bound, c));\n',
+                replace: '            else if (c.type === ELEMENT) collect(c.children, within(bound, c));\n',
+            },
+            {
+                find: '            if (c.type === ELEMENT && !isNestedPhrase(c)) c.children = rewrite(c.children, within(bound, c));\n',
+                replace: '            if (c.type === ELEMENT) c.children = rewrite(c.children, within(bound, c));\n',
+            },
+        ],
+        check: vitest('src/compiler.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M94',
+        rules: 'MARK-4, BIND-1',
+        what: "a nested <Phrase> is rebuilt from the block's translated copy instead of rendering itself",
+        file: 'src/block-vnodes.ts',
+        edits: [{ find: '        if (original?.type === Phrase) return cloneVNode(original);\n', replace: '' }],
+        check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts', 'src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M95',
+        rules: 'MARK-4',
+        what: "a nested <Phrase>'s node carries no category, so the block records its phrase under the block's category too",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: "        mergeProps({ [PHRASE_MARKER_ATTR]: '', [CATEGORY_MARKER_ATTR]: category ?? '' }, attrs),\n",
+                replace: "        mergeProps({ [PHRASE_MARKER_ATTR]: '' }, attrs),\n",
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
+    },
+    {
+        id: 'M96',
+        rules: 'MARK-4, BIND-1',
+        what: 'a teleport inside a nested <Phrase> is collected by the block too, so it renders twice',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            if (vnode.type === Teleport) return void (at.inPhrase ? undefined : teleports.push(vnode));\n',
+                replace: '            if (vnode.type === Teleport) return void teleports.push(vnode);\n',
+            },
+        ],
+        check: vitest('src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M97',
+        rules: 'TOK-1, MARK-4',
+        what: 'a value excluded inside a nested <Phrase> counts against the block, which then registers nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [{ find: '        else if (!inPhrase) excluded = true;\n', replace: '        else excluded = true;\n' }],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M98',
+        rules: 'SRV-2',
+        what: "renderInRequestScope drops the scope's credentials, so a request's render sends under the module-wide key",
+        file: 'src/server.ts',
+        edits: [
+            {
+                find: '    const scope = await createRequestScope(options);\n',
+                replace: '    const scope = await createRequestScope({ ...options, credentials: undefined });\n',
+            },
+        ],
+        check: vitest('src/ssr-credentials-contract.test.ts'),
+    },
+    {
+        id: 'M99',
+        rules: 'GATE-8, BIND-1',
+        what: 'useWriteEnabled takes a call from a hook after mount for a hydrating component, which waits for a mount that has passed and never shows the real value',
+        file: 'src/composables.ts',
+        edits: [
+            {
+                find: '    const hydrating = Boolean(instance && !instance.isMounted && instance.vnode.el);\n',
+                replace: '    const hydrating = Boolean(instance && instance.vnode.el);\n',
+            },
+        ],
+        check: vitest('src/rendered.test.ts'),
+    },
+    {
+        id: 'M100',
+        rules: 'TOK-1, VAR-6',
+        what: 'the transform ignores an exclusion bound through an object or a dynamic argument, so a value it excludes at run time is shown as %email%',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: "            (!p.arg?.isStatic || ['translate', 'data-notrans'].includes(p.arg.content ?? ''))\n",
+                replace: "            ['translate', 'data-notrans'].includes(p.arg?.content ?? '')\n",
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M101',
+        rules: 'VAR-3, VAR-7',
+        what: 'isValueMarker asks the core about a comment the block never sends, so a marker beside an inactive v-if is read as a variable and the block registers nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            if (child.type === Comment) return commentNodes(child);\n',
+                replace:
+                    "            if (child.type === Comment) return [{ comment: String(child.children ?? '') }];\n",
             },
         ],
         check: vitest('src/block-vnodes.test.ts'),
