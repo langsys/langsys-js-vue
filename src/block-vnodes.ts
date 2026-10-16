@@ -19,18 +19,17 @@ import { Phrase } from './components/Phrase.js';
 /**
  * Server rendering for `<Translate>` and `<Phrase>` (SRV-1, SRV-5, MARK-1) — the Vue half.
  *
- * The core's non-DOM block path (`renderBlock`, proposed) translates a serialized tree. This
+ * The core's non-DOM block path (`renderBlock`) translates a serialized tree. This
  * module is the binding's two conversions around it: a default slot's vnodes into that tree,
  * and the translated tree back into vnodes that keep what the tree cannot carry — event
  * handlers, refs, directives, keys — by cloning each element's original vnode through the
  * `source` back-reference the core returns.
- *
- * Working against the proposed shape; not wired into the components until the core ships it.
  */
 
 /**
- * A node of the serialized tree the core tokenizes and translates. `comment` carries another
- * framework's hydration markers; this binding skips Comment vnodes on input, so it never sends one.
+ * A node of the serialized tree the core tokenizes and translates. `comment` carries a value
+ * marker's comment form (VAR-3) or another framework's hydration markers; of the comments in a
+ * slot, this binding sends only value markers.
  */
 export type BlockNode =
     | { text: string }
@@ -114,10 +113,10 @@ function isDynamicText(vnode: VNode): boolean {
 function hasDynamicTranslatableAttribute(vnode: VNode): boolean {
     if (vnode.patchFlag <= 0) return false;
     if (vnode.patchFlag & PATCH_FULL_PROPS)
-        return Object.keys(vnode.props ?? {}).some((name) => TRANSLATABLE.has(name));
+        return Object.keys(vnode.props ?? {}).some((name) => TRANSLATABLE.has(attributeName(name)));
     if (vnode.patchFlag & PATCH_PROPS)
         return ((vnode as unknown as { dynamicProps?: string[] | null }).dynamicProps ?? []).some((name) =>
-            TRANSLATABLE.has(name)
+            TRANSLATABLE.has(attributeName(name))
         );
     return false;
 }
@@ -125,12 +124,29 @@ function hasDynamicTranslatableAttribute(vnode: VNode): boolean {
 /** Props that are not attributes of the rendered element, or that hold content the tree cannot express. */
 const NOT_ATTRIBUTES = new Set(['key', 'ref', 'ref_for', 'ref_key', 'innerHTML', 'textContent']);
 
+/** The DOM properties v-html and v-text set, which hold content the tree cannot express. */
+const RAW_CONTENT = new Set(['innerHTML', 'textContent']);
+
+/**
+ * An attribute's name from a vnode prop key. A client build keys a `.prop` binding `.name` and an
+ * `.attr` binding `^name`; a server build keys both `name`. Read under that name, a server render
+ * and its hydration see the same element.
+ */
+const attributeName = (key: string): string => (key[0] === '.' || key[0] === '^' ? key.slice(1) : key);
+
+/** A vnode's props keyed by attribute name. */
+function attributesOf(vnode: VNode): Record<string, unknown> {
+    const props: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(vnode.props ?? {})) props[attributeName(key)] = value;
+    return props;
+}
+
 /**
  * Whether an element and everything inside it are left out of the phrase (TOK-1): an author's
  * `translate="no"` or `data-notrans`, read by the core's own predicate, or code and notation.
  */
 function isExcluded(vnode: VNode): boolean {
-    const props = vnode.props ?? {};
+    const props = attributesOf(vnode);
     const present = (name: string) => props[name] !== undefined && props[name] !== null && props[name] !== false;
     return (
         NON_TRANSLATABLE_ELEMENTS.includes(String(vnode.type).toLowerCase()) ||
@@ -155,7 +171,8 @@ function commentNodes(vnode: VNode): BlockNode[] {
  * — rather than re-read here.
  */
 function isValueMarker(vnode: VNode): boolean {
-    const name = String(vnode.props?.[VAR_PARAM_ATTR] ?? '').trim();
+    const name = treeAttribute(attributesOf(vnode)[VAR_PARAM_ATTR]);
+    if (name === undefined) return false;
     const shape = (children: unknown): BlockNode[] => {
         if (typeof children === 'string' || typeof children === 'number') return [{ text: 'x' }];
         if (!Array.isArray(children)) return [];
@@ -164,6 +181,7 @@ function isValueMarker(vnode: VNode): boolean {
             if (!isVNode(child)) return shape(child);
             if (child.type === Text) return [{ text: 'x' }];
             if (child.type === Comment) return commentNodes(child);
+            if (child.type === Teleport) return [];
             if (child.type === Fragment) return shape(child.children);
             return [{ tag: typeof child.type === 'string' ? child.type : 'span', children: shape(child.children) }];
         });
@@ -173,7 +191,26 @@ function isValueMarker(vnode: VNode): boolean {
         attrs: { [VAR_PARAM_ATTR]: name },
         children: shape(vnode.children),
     };
-    return tokenizeTree([{ tag: 'p', children: [probe] }]).tokens.join('|') === `{${name}}`;
+    // A marker is its own token, `{NAME}`; ordinary markup around text is `x` or `{m0o}x{m0c}`.
+    const { tokens } = tokenizeTree([{ tag: 'p', children: [probe] }]);
+    return tokens.length === 1 && /^\{[^{}]+\}$/.test(tokens[0]!);
+}
+
+/** An attribute as the tree carries it: its text, `true` for a bare attribute, or nothing. */
+function treeAttribute(value: unknown): string | true | undefined {
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    return value === true ? true : undefined;
+}
+
+/**
+ * A component vnode's default slot content: its slot's, or the children `h()` was given directly,
+ * which Vue keeps as a string or an array until the component sets up.
+ */
+function slotContent(vnode: VNode): VNodeArrayChildren | undefined {
+    const children = vnode.children as unknown;
+    if (typeof children === 'string') return [children];
+    if (Array.isArray(children)) return children as VNodeArrayChildren;
+    return (children as { default?: () => VNodeArrayChildren } | null)?.default?.();
 }
 
 /**
@@ -183,8 +220,7 @@ function isValueMarker(vnode: VNode): boolean {
  */
 function dontTranslateElement(vnode: VNode): VNode {
     const { tag, ...attrs } = (vnode.props ?? {}) as { tag?: string } & Record<string, unknown>;
-    const slots = vnode.children as { default?: () => VNodeArrayChildren } | null;
-    return h(tag ?? 'span', mergeProps({ translate: 'no', 'data-ls-dont-translate': '' }, attrs), slots?.default?.());
+    return h(tag ?? 'span', mergeProps({ translate: 'no', 'data-ls-dont-translate': '' }, attrs), slotContent(vnode));
 }
 
 /** The core's attribute for a nested host's own category (`hostCategory`); empty is a category of its own. */
@@ -207,11 +243,10 @@ function phraseHost(vnode: VNode): VNode {
         category?: string;
         params?: unknown;
     } & Record<string, unknown>;
-    const slots = vnode.children as { default?: () => VNodeArrayChildren } | null;
     return h(
         tag ?? 'span',
         mergeProps({ [PHRASE_MARKER_ATTR]: '', [CATEGORY_MARKER_ATTR]: category ?? '' }, attrs),
-        slots?.default?.()
+        slotContent(vnode)
     );
 }
 
@@ -270,8 +305,10 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
                 return element(dontTranslateElement(vnode), vnode);
             }
             // A nested <Phrase> is read as the phrase host it renders, carrying its own params, and
-            // rendered back as itself: it renders and registers its own phrase.
+            // rendered back as itself: it renders and registers its own phrase. The block's content
+            // keeps a nested host's attributes as written, so one bound on it is the block's exclusion.
             if (vnode.type === Phrase) {
+                if (hasDynamicTranslatableAttribute(vnode)) dynamic({ ...at, inExcluded: true });
                 const params = vnode.props?.params as Record<string, ParamPrimitive> | undefined;
                 return element(phraseHost(vnode), vnode, { ...at, inPhrase: true }, params);
             }
@@ -286,8 +323,8 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             within: At = at,
             params?: Record<string, ParamPrimitive>
         ): void => {
-            const props = vnode.props ?? {};
-            if ('innerHTML' in props || 'textContent' in props) return void (failure ??= 'v-html');
+            const props = attributesOf(vnode);
+            if (Object.keys(props).some((name) => RAW_CONTENT.has(name))) return void (failure ??= 'v-html');
             const here: At = {
                 inExcluded: within.inExcluded || isExcluded(vnode),
                 inMarker: within.inMarker || (VAR_PARAM_ATTR in props && isValueMarker(vnode)),
@@ -298,8 +335,8 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             const attrs: Record<string, string | true> = {};
             for (const [name, value] of Object.entries(props)) {
                 if (NOT_ATTRIBUTES.has(name) || /^on[A-Z]/.test(name)) continue;
-                if (typeof value === 'string' || typeof value === 'number') attrs[name] = String(value);
-                else if (value === true) attrs[name] = true;
+                const attr = treeAttribute(value);
+                if (attr !== undefined) attrs[name] = attr;
             }
             elements.push(original); // pre-order: the element's index before its descendants'
             const kids = walk(vnode.children as VNodeArrayChildren | string | undefined, here);
@@ -336,7 +373,7 @@ const BAIL = -2;
  */
 function changedAttrs(original: VNode, attrs: Readonly<Record<string, string | true>> | undefined) {
     const props = original.props ?? {};
-    const own = new Map(Object.keys(props).map((name) => [name.toLowerCase(), name]));
+    const own = new Map(Object.keys(props).map((name) => [attributeName(name).toLowerCase(), name]));
     const changed: Record<string, string | true> = {};
     for (const [name, value] of Object.entries(attrs ?? {})) {
         const spelled = own.get(name.toLowerCase());

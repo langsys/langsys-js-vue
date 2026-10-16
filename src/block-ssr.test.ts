@@ -323,6 +323,19 @@ describe('a <Phrase> nested in a block', () => {
 });
 
 describe('<DontTranslate> inside a block', () => {
+    it.each([
+        ['a string', () => h(DontTranslate, null, 'Kangen')],
+        ['an array', () => h(DontTranslate, null, ['Kangen'])],
+        ['a slot (control)', () => h(DontTranslate, null, () => 'Kangen')],
+    ])('given its children by h() as %s, keeps them, served and hydrated', async (_, kangen) => {
+        const { served, el, mismatches } = await serveAndHydrate(() =>
+            defineComponent({ render: () => h(Translate, { category: 'UI' }, () => [h('p', ['Pricing ', kangen()])]) })
+        );
+        expect(served).toContain('<p>Prezzi <span translate="no" data-ls-dont-translate>Kangen</span></p>');
+        expect(el.textContent).toBe('Prezzi Kangen');
+        expect(mismatches).toEqual([]);
+    });
+
     it('renders a teleport its slot holds once', async () => {
         seed(IT, 'it');
         const target = document.createElement('div');

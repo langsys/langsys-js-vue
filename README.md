@@ -121,8 +121,8 @@ To fail loudly instead, pass `requireCredentials: true`: `t()`, and so every `us
 `ssrTokenStrategy` (default `'client'`) controls when missing tokens are sent during server rendering:
 
 - `'client'` — tokens collected on the server are flushed from the client after hydration. Best for performance.
-- `'server'` — tokens are sent immediately during SSR. Best for reliability and immediate registration.
-- `'auto'` — small batches (≤5) sent from server, larger queued for client.
+- `'server'` — tokens are registered from the server when the request scope closes, when the key may write. Best for reliability and immediate registration.
+- `'auto'` — registered from the server when there are fewer than 5; otherwise left to the client.
 
 ## Write gating
 
@@ -409,11 +409,11 @@ It rewrites each `{{ … }}` inside `<Translate>` and `<Phrase>`, and each ``t(`
 
 The other arguments of such a `t()` call keep their meaning, written literally or held in a variable: a string is the category, an object is params laid over the derived ones.
 
-Names come from the expression, derived by the base SDK so every Langsys SDK names a value alike: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`, `getA()(n)` → `n`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html`, a component or a `<slot>` is left as written.
+Names come from the expression, derived by the base SDK so every Langsys SDK names a value alike: `firstName` → `first_name`, `user.name` → `name`, `items.length` → `items_count`, `price.value` → `price`, `formatDate(order.date)` → `date`, `getA()(n)` → `n`; clashing names take their previous segment (`a_name`, `b_name`). An expression with no name — `a + b`, a ternary — becomes `value` with a build-time warning; name it yourself with `%name%` and `:params`, which always win. A block holding `v-if`, `v-for`, `v-html` (or `innerHTML` or `textContent` bound by name or written as a static attribute), a component or a `<slot>` is left as written.
 
 **Without the transform**, a block whose compiled template puts a value into its text, or into a translatable attribute such as `:alt` or `:title`, registers nothing: it renders what the catalog already holds for its text, on the server and in the browser, and the base SDK notes it once in debug mode, naming the transform to enable. Raw HTML is content, not a variable: a block whose only dynamic part is `v-html`, a CMS field say, registers that HTML's text after mount, with or without the transform; one that also interpolates a value registers nothing. Nothing per-user is ever registered. Render functions written by hand (`h()`, JSX) carry no such signal, so write the placeholder and pass the param yourself: `h(Translate, { params: { name } }, () => 'Hello %name%')`, and `t('Hello {name}', { name })` in script. A value inside a `translate="no"` element is marked rather than named: `h('span', { 'data-ls-param': 'email' }, email)`.
 
-Inside `translate="no"`, `data-notrans` or `<DontTranslate>`, the transform wraps a value in that marker instead of a placeholder, named after the sentence's own values so their names never change: `Hi {{ name }}, or <span translate="no">{{ name }}</span>` registers `Hi {name}, or` and stores `{name_2}` in the excluded span. Inside code and notation (`<math>`, `<script>`), inside SVG, and inside an element whose `translate` is bound (`:translate="mode"`), or that binds an object (`v-bind="attrs"`) or a dynamic argument, either of which can carry it, a value is left as written, and a block holding one registers nothing; a phrase still registers when the element turns out excluded.
+Inside `translate="no"`, `data-notrans` or `<DontTranslate>`, the transform wraps a value in that marker instead of a placeholder, named after the sentence's own values so their names never change: `Hi {{ name }}, or <span translate="no">{{ name }}</span>` registers `Hi {name}, or` and stores `{name_2}` in the excluded span. Inside code and notation (`<math>`, `<script>`), inside SVG, inside an element that holds text only (`<textarea>`, `<option>`), and inside an element whose `translate` is bound (`:translate="mode"`), or that binds an object (`v-bind="attrs"`) or a dynamic argument, either of which can carry it, a value is left as written, and a block holding one registers nothing; a phrase still registers when the element turns out excluded.
 
 ## Asking your own API for the user's language
 

@@ -1111,9 +1111,7 @@ export const MUTATIONS = [
         rules: 'TOK-1, VAR-6',
         what: "the transform puts the marker's <span> inside SVG, where it does not render",
         file: 'src/compiler.ts',
-        edits: [
-            { find: "    return bound === 'author' && node.ns ? 'code' : bound;\n", replace: '    return bound;\n' },
-        ],
+        edits: [{ find: "    if (node.ns) return 'code';\n", replace: '' }],
         check: vitest('src/compiler.test.ts'),
     },
     {
@@ -1155,7 +1153,13 @@ export const MUTATIONS = [
         rules: 'MARK-4, VAR-6',
         what: 'a nested <Phrase> stops the transform, so the block around it keeps its compiled value and registers nothing',
         file: 'src/compiler.ts',
-        edits: [{ find: '        if (isNestedPhrase(c)) continue;\n', replace: '' }],
+        edits: [
+            {
+                find: "        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '') && !isNestedPhrase(c)) return 'component';\n",
+                replace:
+                    "        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '')) return 'component';\n",
+            },
+        ],
         check: vitest('src/compiler.test.ts', 'src/variables-contract.test.ts'),
     },
     {
@@ -1270,6 +1274,156 @@ export const MUTATIONS = [
         ],
         check: vitest('src/block-vnodes.test.ts'),
     },
+    {
+        id: 'M102',
+        rules: 'TOK-1, VAR-6',
+        what: "the transform puts the marker's <span> inside an element that holds text only, where a textarea shows it as text and an option drops it",
+        file: 'src/compiler.ts',
+        edits: [{ find: "    if (TEXT_ONLY.has((node.tag ?? '').toLowerCase())) return 'code';\n", replace: '' }],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M103',
+        rules: 'TOK-1, MARK-4',
+        what: 'a <DontTranslate> or nested <Phrase> given its children by h() is read through its slot alone, so the block renders it empty',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: "    if (typeof children === 'string') return [children];\n    if (Array.isArray(children)) return children as VNodeArrayChildren;\n",
+                replace: '',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/block-ssr.test.ts'),
+    },
+    {
+        id: 'M104',
+        rules: 'VAR-1, MARK-4',
+        what: "a translatable attribute bound on a nested <Phrase> is not the block's exclusion, so the block stores the value in its content",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '                if (hasDynamicTranslatableAttribute(vnode)) dynamic({ ...at, inExcluded: true });\n                const params',
+                replace: '                const params',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M105',
+        rules: 'VAR-3, VAR-7',
+        what: 'isValueMarker asks the core about a bare data-ls-param as the name "true", while the block sends true, which names nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '    const name = treeAttribute(attributesOf(vnode)[VAR_PARAM_ATTR]);\n',
+                replace: "    const name = String(attributesOf(vnode)[VAR_PARAM_ATTR] ?? '');\n",
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M106',
+        rules: 'VAR-3, VAR-7',
+        what: 'isValueMarker counts a teleport inside a marker as an element, while the block sets it aside, so the block registers nothing',
+        file: 'src/block-vnodes.ts',
+        edits: [{ find: '            if (child.type === Teleport) return [];\n', replace: '' }],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M107',
+        rules: 'MARK-4, VAR-6',
+        what: 'the transform skips what a nested <Phrase> holds, so a blocker there leaves the block rewritten and it falls back showing %name%',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: "        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '') && !isNestedPhrase(c)) return 'component';\n",
+                replace:
+                    "        if (isNestedPhrase(c)) continue;\n        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '')) return 'component';\n",
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M108',
+        rules: 'MARK-4, VAR-6',
+        what: "a conditional or a list inside a nested <Phrase> holds the block's rewrite back, though the slot walk drops an inactive branch and enters a list, so the block registers nothing",
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: '        const blocking = inPhrase ? WALK_STOPPING_DIRECTIVES : BLOCKING_DIRECTIVES;\n',
+                replace: '        const blocking = BLOCKING_DIRECTIVES;\n',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M109',
+        rules: 'VAR-6, VAR-7',
+        what: 'an element that sets innerHTML or textContent does not hold the block back as v-html does, so the block is rewritten, falls back at run time and shows %name%',
+        file: 'src/compiler.ts',
+        edits: [{ find: '        if (raw) return propName(raw)!;\n', replace: '' }],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M110',
+        rules: 'VAR-6, VAR-7',
+        what: 'a static innerHTML or textContent attribute does not hold the block back, though Vue sets it as the property and the slot walk falls back',
+        file: 'src/compiler.ts',
+        edits: [{ find: '    if (p.type === ATTRIBUTE) return p.name;\n', replace: '' }],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M111',
+        rules: 'VAR-6, VAR-7',
+        what: 'a binding is read without its .camel modifier, so :text-content.camel, which sets textContent, does not hold the block back',
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: "    return camel ? (p.arg.content ?? '').replace(/-(\\w)/g, (_, c: string) => c.toUpperCase()) : p.arg.content;\n",
+                replace: '    return p.arg.content;\n',
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M112',
+        rules: 'VAR-7, BIND-1',
+        what: "the slot walk reads an element's props under the client build's keys (.innerHTML, ^title), so a server render and its hydration take different paths",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            const props = attributesOf(vnode);\n',
+                replace: '            const props = vnode.props ?? {};\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M113',
+        rules: 'VAR-1, VAR-7',
+        what: 'a translatable attribute bound with .prop or .attr is not read as dynamic, so the block stores the value in its content',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '            TRANSLATABLE.has(attributeName(name))\n',
+                replace: '            TRANSLATABLE.has(name)\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
+    {
+        id: 'M114',
+        rules: 'SRV-1, BIND-1',
+        what: "a translated attribute is laid over under its plain name beside the vnode's .prop or .attr key, so the element carries both",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '    const own = new Map(Object.keys(props).map((name) => [attributeName(name).toLowerCase(), name]));\n',
+                replace: '    const own = new Map(Object.keys(props).map((name) => [name.toLowerCase(), name]));\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
+    },
 ];
 
 /**
@@ -1287,7 +1441,11 @@ function runInWorktree() {
     const dir = join(mkdtempSync(join(tmpdir(), 'langsys-vue-mutations-')), 'tree');
     git('-C', root, 'worktree', 'add', '--detach', dir, head);
     try {
-        const diff = spawnSync('git', ['-C', root, 'diff', '--binary', 'HEAD'], { encoding: 'buffer' }).stdout;
+        // No cap on the diff: Node's default 1 MiB would cut a large one short, and the cut patch fails to apply.
+        const diff = spawnSync('git', ['-C', root, 'diff', '--binary', 'HEAD'], {
+            encoding: 'buffer',
+            maxBuffer: Infinity,
+        }).stdout;
         if (diff.length) {
             const applied = spawnSync('git', ['-C', dir, 'apply', '--whitespace=nowarn'], { input: diff });
             if (applied.status !== 0) throw new Error(`could not apply the checkout's changes: ${applied.stderr}`);

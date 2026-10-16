@@ -55,6 +55,18 @@ const isNestedPhrase = (node: AstNode): boolean => node.tagType === COMPONENT &&
 /** `<DontTranslate>` renders a `translate="no"` element around its slot; the transform reads it as one. */
 const DONT_TRANSLATE = new Set(['DontTranslate', 'dont-translate']);
 const BLOCKING_DIRECTIVES = new Set(['if', 'else', 'else-if', 'for', 'html', 'text', 'slot']);
+/** What stops a block's slot walk: raw HTML or text the tree cannot hold. */
+const WALK_STOPPING_DIRECTIVES = new Set(['html', 'text']);
+/** The props v-html and v-text set, which stop the slot walk however an element sets them. */
+const RAW_CONTENT_PROPS = new Set(['innerHTML', 'textContent']);
+
+/** The prop an attribute or a static binding sets on the vnode; `.camel` camelizes it, as Vue does. */
+function propName(p: AstNode): string | undefined {
+    if (p.type === ATTRIBUTE) return p.name;
+    if (p.type !== DIRECTIVE || p.name !== 'bind' || !p.arg?.isStatic) return undefined;
+    const camel = p.modifiers?.some((m) => (typeof m === 'string' ? m : m.content) === 'camel');
+    return camel ? (p.arg.content ?? '').replace(/-(\w)/g, (_, c: string) => c.toUpperCase()) : p.arg.content;
+}
 const IDENT = '[A-Za-z_$][\\w$]*';
 
 // ---------------------------------------------------------------------------------------------
@@ -211,6 +223,7 @@ interface AstNode {
     props?: AstNode[];
     name?: string;
     arg?: AstNode & { content?: string; isStatic?: boolean };
+    modifiers?: Array<string | { content?: string }>;
     exp?: AstNode & { content?: string };
     value?: AstNode;
     loc?: unknown;
@@ -224,16 +237,21 @@ interface TransformContext {
 const expression = (content: string, isStatic: boolean, loc: unknown): AstNode =>
     ({ type: SIMPLE_EXPRESSION, content, isStatic, constType: isStatic ? 3 : 0, loc }) as AstNode;
 
-function blockedBy(children: AstNode[] = []): string | null {
+function blockedBy(children: AstNode[] = [], inPhrase = false): string | null {
     for (const c of children) {
         if (c.type !== ELEMENT) continue;
         if (c.tag === 'slot') return 'slot';
-        const d = c.props?.find((p) => p.type === DIRECTIVE && BLOCKING_DIRECTIVES.has(p.name ?? ''));
+        // Inside a nested <Phrase> only what stops the block's slot walk holds the block back: its
+        // conditionals and lists are the phrase's to render, and none of its values are the block's.
+        const blocking = inPhrase ? WALK_STOPPING_DIRECTIVES : BLOCKING_DIRECTIVES;
+        const d = c.props?.find((p) => p.type === DIRECTIVE && blocking.has(p.name ?? ''));
         if (d) return `v-${d.name}`;
-        // A nested <Phrase> is a unit of its own (MARK-4): its content is its own rewrite's.
-        if (isNestedPhrase(c)) continue;
-        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '')) return 'component';
-        const inner = blockedBy(c.children);
+        const raw = c.props?.find((p) => RAW_CONTENT_PROPS.has(propName(p) ?? ''));
+        if (raw) return propName(raw)!;
+        // A nested <Phrase> is a unit of its own (MARK-4), not a component that holds the block back;
+        // what would stop the slot walk inside it still does, since the walk enters it.
+        if (c.tagType === COMPONENT && !DONT_TRANSLATE.has(c.tag ?? '') && !isNestedPhrase(c)) return 'component';
+        const inner = blockedBy(c.children, inPhrase || isNestedPhrase(c));
         if (inner) return inner;
     }
     return null;
@@ -243,16 +261,23 @@ function blockedBy(children: AstNode[] = []): string | null {
  * How an element bounds the sentence (TOK-1): an author's exclusion — `translate="no"` or
  * `data-notrans`, read by the core's own predicate, or `<DontTranslate>` — or code and notation.
  * Neither enters the phrase. A value printed inside an author's exclusion is marked (VAR-3) so a
- * block stores its name, not the value; inside code, foreign content, or an element whose exclusion
- * is bound at run time, it is left as written.
+ * block stores its name, not the value; inside code, foreign content, an element that holds text
+ * only, or an element whose exclusion is bound at run time, it is left as written.
  */
 type Within = 'author' | 'code' | null;
+
+/** Elements that hold text only, where the marker's <span> would show as text or be dropped. */
+const TEXT_ONLY = new Set(['textarea', 'title', 'option']);
 
 function within(outer: Within, node: AstNode): Within {
     if (outer === 'code') return 'code';
     const bound = boundBy(outer, node);
-    // Foreign content (SVG, MathML) cannot hold the marker's <span>: a value there is left as written.
-    return bound === 'author' && node.ns ? 'code' : bound;
+    if (bound !== 'author') return bound;
+    // Foreign content (SVG, MathML) cannot hold the marker's <span>, nor can an element that holds
+    // text only: a value there is left as written.
+    if (node.ns) return 'code';
+    if (TEXT_ONLY.has((node.tag ?? '').toLowerCase())) return 'code';
+    return 'author';
 }
 
 function boundBy(outer: Within, node: AstNode): Within {

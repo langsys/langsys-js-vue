@@ -224,6 +224,33 @@ describe('VAR-6 — interpolations inside <Translate> and <Phrase> become placeh
         }
     });
 
+    it.each([
+        ':innerHTML="raw"',
+        ':textContent="raw"',
+        'innerHTML="<i>Bo</i>"',
+        'textContent="Bo"',
+        ':text-content.camel="raw"',
+    ])(
+        'an element that sets innerHTML or textContent (%s) holds raw content as v-html does: the block is left as written, at the top level and inside a nested <Phrase>',
+        async (set) => {
+            const data = { user: { name: 'Ana' }, raw: '<i>Bo</i>' };
+            for (const tpl of [
+                `<div><Translate category="UI"><p>Hi {{ user.name }}</p><p><b ${set}></b></p></Translate></div>`,
+                `<div><Translate category="UI"><p>Hi {{ user.name }}</p><Phrase category="UI">By <b ${set}></b></Phrase></Translate></div>`,
+            ]) {
+                const html = await serve(tpl, data);
+                expect(html, tpl).toContain('<p>Hi Ana</p>');
+                expect(html, tpl).not.toContain('%name%');
+            }
+        }
+    );
+
+    it('control: :inner-html is an attribute, not the property, so the block is rewritten and registers', async () => {
+        const tpl =
+            '<div><Translate category="UI"><p>Hi {{ user.name }}</p><p><b :inner-html="raw"></b></p></Translate></div>';
+        expect(await registers(tpl, { user: { name: 'Ana' }, raw: 'x' })).toBe('Hi {name}');
+    });
+
     it('two unnameable values in one block are two placeholders, each rendering its own value', async () => {
         const data = { a: 1, b: 2, c: 3, d: 4 };
         expect(
@@ -324,6 +351,25 @@ describe('TOK-1 — a value inside an excluded element is marked, never a placeh
         expect(await registers(tpl, { count: 3 })).toBe('(excluded)');
     });
 
+    it.each([
+        [
+            'a <textarea>',
+            '<textarea translate="no">{{ draft }}</textarea>',
+            '<textarea translate="no">hello</textarea>',
+        ],
+        ['an <option>', '<select translate="no"><option>{{ draft }}</option></select>', '<option>hello</option>'],
+        ['a <title>', '<DontTranslate><title>{{ draft }}</title></DontTranslate>', '<title>hello</title>'],
+    ])(
+        'inside %s, which holds text only, a value is left as written and the block registers nothing',
+        async (_, inner, out) => {
+            const tpl = `<div><Translate category="UI"><p>Note ${inner} here</p></Translate></div>`;
+            const html = await serve(tpl, { draft: 'hello' });
+            expect(html).toContain(out);
+            expect(html).not.toContain('data-ls-param');
+            expect(await registers(tpl, { draft: 'hello' })).toBe('(excluded)');
+        }
+    );
+
     it('a bound translate is decided when the page renders: the value is left as written, and read as excluded', async () => {
         const tpl =
             '<div><Translate category="UI"><p>Signed in as <span :translate="mode">{{ user.email }}</span> today</p></Translate></div>';
@@ -371,6 +417,28 @@ describe('MARK-4 — a <Phrase> nested in a <Translate>', () => {
         expect(html).toContain('<p>Hi Ana</p><p>Welcome back</p>');
         expect(html).toContain('>By Bo</span>');
     });
+
+    it('what blocks the nested <Phrase> holds the block’s rewrite too: the block falls back with its values in place', async () => {
+        const blocked =
+            '<div><Translate category="UI"><p>Hi {{ user.name }}</p><p>Welcome back</p><Phrase category="UI">By <b v-html="raw"></b></Phrase></Translate></div>';
+        const html = await serve(blocked, { ...data, raw: '<i>Bo</i>' });
+        expect(html).toContain('<p>Hi Ana</p>');
+        expect(html).not.toContain('%name%');
+        // Control: unblocked, the same block is rewritten.
+        expect(await registers(tpl, data)).toBe('Hi {name} | Welcome back');
+    });
+
+    it.each([
+        ['<b v-if="show">Bo</b>'],
+        ['<b v-if="show">Bo</b><i v-else>Cy</i>'],
+        ['<b v-for="t in tags" :key="t">tag</b>'],
+    ])(
+        'a conditional or a list inside the nested <Phrase> is the phrase’s to render: the block is still rewritten (%s)',
+        async (inner) => {
+            const t = `<div><Translate category="UI"><p>Hi {{ user.name }}</p><p>Welcome back</p><Phrase category="UI">By ${inner}</Phrase></Translate></div>`;
+            expect(await registers(t, { ...data, show: true, tags: ['a'] })).toBe('Hi {name} | Welcome back');
+        }
+    );
 
     it('control: without the transform the values stay compiled, and the block registers nothing', async () => {
         expect(await registers(tpl, data, false)).toBe('(variable)');

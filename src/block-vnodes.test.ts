@@ -89,6 +89,47 @@ describe('slot vnodes → the core tree', () => {
         });
     });
 
+    it('raw content set as a DOM property falls back as v-html does, under either build\u2019s key', () => {
+        // A client build keys a .prop binding `.innerHTML` and an .attr binding `^innerHTML`; a server
+        // build keys both `innerHTML`, so the walk reads them alike.
+        for (const props of [
+            { '.innerHTML': '<i>raw</i>' },
+            { '^innerHTML': 'raw' },
+            { '.textContent': 'raw' },
+            { textContent: 'raw' },
+        ]) {
+            expect(slotToBlockNodes([h('p', 'Hello there'), h('b', props)]), JSON.stringify(props)).toMatchObject({
+                ok: false,
+                reason: 'v-html',
+            });
+        }
+        // Control: an ordinary attribute converts.
+        expect(slotToBlockNodes([h('p', 'Hello there'), h('b', { title: 'raw' })]).ok).toBe(true);
+    });
+
+    it('an attribute bound with .prop or .attr is read under its name, as a server build keys it, and translated back under its own key', () => {
+        for (const key of ['title', '.title', '^title']) {
+            const fixed = slotToBlockNodes([h('p', 'Pricing'), h('b', { [key]: 'Tip' }, 'Bold words')]);
+            expect(fixed.ok && fixed.nodes[1], key).toEqual({
+                tag: 'b',
+                attrs: { title: 'Tip' },
+                children: [{ text: 'Bold words' }],
+            });
+            const bound = createVNode('b', { [key]: 'Tip' }, 'Bold words', 8 /* PROPS */, [key]);
+            expect(slotToBlockNodes([h('p', 'Pricing'), bound]).variable, key).toBe(true);
+            if (!fixed.ok) continue;
+            const [, b] = translatedToVNodes(
+                [
+                    { tag: 'p', source: 0, children: [{ text: 'Prezzi' }] },
+                    { tag: 'b', source: 1, attrs: { title: 'Suggerimento' }, children: [{ text: 'Parole' }] },
+                ],
+                fixed.elements
+            ) as VNode[];
+            expect(b!.props, key).toMatchObject({ [key]: 'Suggerimento' });
+            if (key !== 'title') expect(b!.props, key).not.toHaveProperty('title');
+        }
+    });
+
     it('v-html beside a compiled variable, before it or after it, marks the block a variable (VAR-7)', () => {
         const raw = () => h('div', { innerHTML: '<i>raw</i>' });
         const value = () => createVNode('p', null, 'Hi Ana', 1 /* PatchFlags.TEXT */);
@@ -258,6 +299,17 @@ describe('excluded elements (TOK-1)', () => {
             variable: false,
             excluded: false,
         });
+        // The marker is asked of the core as the block sends it: a bare attribute goes as `true`,
+        // which names nothing, and a teleport inside is set aside.
+        expect(flags(at(h('span', { 'data-ls-param': true }, [value('Ana')])))).toEqual({
+            variable: true,
+            excluded: false,
+        });
+        expect(
+            flags(
+                at(h('span', { 'data-ls-param': 'name' }, [value('Ana'), h(Teleport, { to: 'body' }, [h('b', 'x')])]))
+            )
+        ).toEqual({ variable: false, excluded: false });
         // The comment Vue leaves for an inactive v-if is not sent, so the core reads the marker without it.
         const inactive = at(h('span', { 'data-ls-param': 'name' }, [value('Ana'), createCommentVNode('v-if')]));
         expect(flags(inactive)).toEqual({ variable: false, excluded: false });
@@ -302,6 +354,24 @@ describe('a nested <Phrase> (MARK-4, VAR-2)', () => {
     it('carries the default category, so the block records the phrase where the component does', () => {
         const result = slotToBlockNodes([h(Phrase, null, () => ['By the team'])]);
         expect(result.ok && result.nodes[0]).toMatchObject({ attrs: { 'data-ls-category': '' } });
+    });
+
+    it('given its children by h() as a string or an array, carries them in the block’s tree', () => {
+        for (const children of ['By Bo', ['By Bo'], () => ['By Bo']]) {
+            const result = slotToBlockNodes([h('p', 'Hello'), h(Phrase, { category: 'UI' }, children)]);
+            expect(result.ok && result.nodes[1]).toMatchObject({ children: [{ text: 'By Bo' }] });
+        }
+    });
+
+    it('a translatable attribute bound on it would put the value in the block’s content: it is the block’s exclusion', () => {
+        const title = createVNode(Phrase, { title: 'Ana' }, { default: () => ['By the team'] }, 8 /* PROPS */, [
+            'title',
+        ]);
+        const result = slotToBlockNodes([h('p', 'Hello'), title]);
+        expect({ variable: result.variable, excluded: result.excluded }).toEqual({ variable: false, excluded: true });
+        // Control: the same attribute written as is, nothing bound.
+        const fixed = slotToBlockNodes([h('p', 'Hello'), h(Phrase, { title: 'Ana' }, () => ['By the team'])]);
+        expect({ variable: fixed.variable, excluded: fixed.excluded }).toEqual({ variable: false, excluded: false });
     });
 
     it('a value excluded inside it is the phrase’s; a bare one still keeps the block from registering', () => {
