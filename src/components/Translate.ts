@@ -21,6 +21,13 @@ import { serverScope, useT } from '../composables.js';
 export interface TranslateProps {
     /** Optional category under which tokens are registered. Helps translators disambiguate. */
     category?: string;
+    /**
+     * The category this block was registered under before it moved to `category` (MOVE-1): `''`
+     * for none, unset or `null` for no move. Its translations follow it instead of being made and
+     * charged again, and until the catalog holds the block under `category` the previous one's
+     * renders, with the host saying so (MOVE-4, MOVE-5). Never part of the block's id (MOVE-2).
+     */
+    previousCategory?: string | null;
     /** Optional stable id for the content block. If omitted, the SDK hashes category + tokens. */
     custom_id?: string;
     /** Optional human-readable label shown in the Translation Manager. */
@@ -55,6 +62,8 @@ export const Translate = defineComponent({
     name: 'Translate',
     props: {
         category: { type: String, default: '' },
+        // `null` and unset are both "did not move"; `''` is a value (MOVE-1).
+        previousCategory: { type: [String, null] as PropType<string | null>, default: undefined },
         custom_id: { type: String, default: '' },
         label: { type: String, default: '' },
         tag: { type: String, default: 'translate' },
@@ -73,8 +82,14 @@ export const Translate = defineComponent({
         /** The tree last registered, serialized: a re-render that changed the slot registers again. */
         let registered: string | null = null;
 
+        /** The move, as the core's options take it: nothing when the block did not move (MOVE-1). */
+        const moved = () =>
+            props.previousCategory === undefined || props.previousCategory === null
+                ? {}
+                : { previousCategory: props.previousCategory };
         const options = () => ({
             category: props.category,
+            ...moved(),
             label: props.label,
             params: props.params,
             ...(props.custom_id ? { id: props.custom_id } : {}),
@@ -87,6 +102,7 @@ export const Translate = defineComponent({
             instance?.destroy();
             instance = new VanillaTranslate(host.value, {
                 category: props.category,
+                ...moved(),
                 custom_id: props.custom_id,
                 label: props.label,
                 params: props.params,
@@ -126,7 +142,7 @@ export const Translate = defineComponent({
         onActivated(register);
         watch(t, register, { flush: 'post' });
         watch(
-            () => [props.category, props.custom_id, props.label],
+            () => [props.category, props.previousCategory, props.custom_id, props.label],
             () => (tree ? register() : create()),
             {
                 flush: 'post',

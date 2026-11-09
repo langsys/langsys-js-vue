@@ -48,6 +48,7 @@ src/
     ssr-subscriptions.test.ts # server renders leave no subscription on the core's signals
     block-vnodes.test.ts      # slot → tree mapping, fallbacks, re-attachment through `source`
     block-ssr.test.ts         # <Translate>/<Phrase> served translated and stamped; hydration parity
+    category-move.test.ts     # MOVE-1..5: previousCategory through <Translate>/<Phrase>/nested <Phrase>, inCategory() via useT() and the compiler's t() rewrite; stamps, ids, the scope's record
     compiler.test.ts          # VAR-2 shared naming vectors, the transform on all four compile paths, t() rewriting, VAR-7, values inside an exclusion (TOK-1)
     locale-headers.test.ts    # FRM-6: localeHeaders() re-exported and forwarded; the scope's locale inside a scope
     variables-contract.test.ts # VAR-1/6/7 against the contract double: two users, with and without the transform (own process)
@@ -127,6 +128,7 @@ t, currentlyLoadedLocale, sTranslations  // raw Signals; prefer the composables 
 // writeEnabled is deliberately NOT re-exported — use useWriteEnabled(); see index.ts and write-enabled-absence.test.ts
 createSignal                  // re-exported generic Signal factory
 canonicalizeLocale(locale)    // re-exported locale normalizer; canonical form is LOWERCASE 'en-us' (WIRE-3)
+inCategory(), isCategoryRef() // the core's (MOVE-1): t(phrase, inCategory('New', { previousCategory: 'Old' })); types CategoryRef, CategoryMoveOptions
 
 // Route changes (HINT-13) and server messages (MSG-5)
 syncNavigation(router)        // Vue Router afterEach → notifyNavigation(); returns the remover
@@ -147,8 +149,8 @@ langsysTransform              // compilerOptions.nodeTransforms entry: {{ x }} i
 nameVariables(exprs, taken?)  // VAR-2 names via the core's derivePlaceholderNames; expressionShape(expr); langsysCompilerOptions(opts?)
 
 // Components
-<Translate category? custom_id? label? tag? />       // class falls through
-<Phrase category? params? tag? />
+<Translate category? previousCategory? custom_id? label? tag? />  // class falls through; previousCategory (MOVE-1) never enters the id
+<Phrase category? previousCategory? params? tag? />                // nested in a <Translate>, its previousCategory is marked data-ls-previous-category on the tree's host
 <DontTranslate tag? />
 
 // Direct API client access (vanilla — no Vue concerns)

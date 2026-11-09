@@ -320,7 +320,7 @@ substituted it before Langsys saw the text — write %name% instead.
 
 The check fires for `<Translate>` and `<Phrase>`, treats ICU slots (`{n, plural, …}`) as legitimate, re-runs only when the params _key set_ changes (a ticking count won't spam), and is silent in production. Note the warning names both brace spellings because it's shared across bindings — in Vue only `{{ }}` is eaten; a single `{name}` survives and works, so it never trips this warning.
 
-`<Translate>` props: `category?`, `custom_id?`, `label?`, `tag?` (defaults to `translate`), `params?`. `class` and other attributes fall through to the host element.
+`<Translate>` props: `category?`, `previousCategory?` ([moving content](#moving-content-to-another-category)), `custom_id?`, `label?`, `tag?` (defaults to `translate`), `params?`. `class` and other attributes fall through to the host element.
 
 ### `<Phrase>` — markup-bearing phrases (pluralization)
 
@@ -340,7 +340,7 @@ The inline elements never reach the translator — they're replaced with neutral
 
 > Write the placeholder as `%n%` (the base SDK normalizes it to `{n}` at capture). A single `{n}` also passes through in Vue templates since Vue only consumes `{{ }}` — but `%n%` is the portable form shared with the React/Svelte bindings. Writing `{{ n }}` here fails the same way it does in `<Translate>`, and [debug mode flags it](#runtime-values-with-params--write-placeholders-as-name).
 
-`<Phrase>` props: `category?`, `params?`, `tag?` (defaults to `span`). `class` falls through to the host.
+`<Phrase>` props: `category?`, `previousCategory?` ([moving content](#moving-content-to-another-category)), `params?`, `tag?` (defaults to `span`). `class` falls through to the host.
 
 ### `<DontTranslate>` — never-translated regions
 
@@ -365,6 +365,28 @@ A value printed inside it, or inside any `translate="no"` or `data-notrans` elem
 A `<Phrase>` keys the excluded element as an empty markup pair, whatever it holds, and renders its content as written. In a `<Translate>`, the [compiler transform](#variables-in-text) marks the value, so the block stores `{email}` in its content instead of the address; without the transform a block holding such a value registers nothing, since its content keeps excluded text as written.
 
 `<DontTranslate>` props: `tag?` (defaults to `span`). `class` falls through to the host.
+
+### Moving content to another category
+
+A category is part of what identifies a phrase or a block, so text moved into a better category would register as new content and be translated, and charged for, again. Name the category it was registered under before, and its translations follow it instead:
+
+```vue
+<script setup lang="ts">
+import { inCategory, useT } from 'langsys-js-vue';
+const t = useT();
+</script>
+
+<template>
+    <button>{{ t('Buy now', inCategory('Checkout', { previousCategory: 'Header' })) }}</button>
+
+    <Translate category="Checkout" previous-category="Header"><p>Free returns for 30 days</p></Translate>
+    <Phrase category="Checkout" previous-category="Header">Read the <a href="/terms">terms</a></Phrase>
+</template>
+```
+
+`inCategory()` goes where the category goes in `t()`; `<Translate>` and `<Phrase>` take `previousCategory` as a prop, and so does a `<Phrase>` nested in a `<Translate>`. `previousCategory: ''` says the content had no category before; unset or `null` says it did not move. It is sent once, on the registration of the content under its new category: Langsys copies the old item's translations instead of translating it again, and retires the old item (still served to app versions that ask for it, left out of the Translation Manager and stats). Until the catalog holds the content under its new category, the old category's translation renders, and the host says so with `data-ls-previous-contentblock` (a block) or `data-ls-previous-category` (a phrase). The previous category never changes a block's id. Once the content is in the catalog under its new category the option does nothing and can be deleted.
+
+Naming a previous category moves every use of that text in that category, so move them all in the same release. Requires `langsys-js-typescript` with `inCategory()` (0.7.3 or later).
 
 ### Already-translated regions — `data-ls-resolved`
 

@@ -482,7 +482,7 @@ describe('VAR-6 — t() calls in templates', () => {
             expect(out.content, `ssr: ${ssr}`).toContain('"Welcome back, {first_name}", \'UI\', { "first_name": (');
             // The arguments of the call that reads the category at run time are its own, never `_ctx`'s.
             expect(out.content, `ssr: ${ssr}`).toContain(
-                `"Bye, {first_name}", ...((p, a) => (typeof a === 'object' ? [{ ...p, ...a }] : [a, p]))({ "first_name": (`
+                `"Bye, {first_name}", ...((p, a) => (typeof a === 'object' && !(a && a[Symbol.for('langsys.category')] === true) ? [{ ...p, ...a }] : [a, p]))({ "first_name": (`
             );
         }
     });

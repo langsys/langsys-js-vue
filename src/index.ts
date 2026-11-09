@@ -79,6 +79,12 @@ export { currentlyLoadedLocale, createSignal, sTranslations, tSignal as t } from
 // way before comparing against `useCurrentLocale()` / `detectPreferredLocale()`.
 export { canonicalizeLocale } from 'langsys-js-typescript';
 
+// Content moved to another category (MOVE-1), re-exported by reference:
+// `t('Buy now', inCategory('Checkout', { previousCategory: 'Header' }))`. The ref goes in the
+// category position; `<Translate>` and `<Phrase>` take `previousCategory` as a prop instead.
+export { inCategory, isCategoryRef } from 'langsys-js-typescript';
+export type { CategoryRef, CategoryMoveOptions } from 'langsys-js-typescript';
+
 // API client (vanilla — no Vue concerns)
 export { LangsysAppAPI } from 'langsys-js-typescript';
 // WIRE-4: what an unconfigured client throws — an explicit write without credentials, and

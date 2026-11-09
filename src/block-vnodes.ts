@@ -225,27 +225,37 @@ function dontTranslateElement(vnode: VNode): VNode {
 
 /** The core's attribute for a nested host's own category (`hostCategory`); empty is a category of its own. */
 const CATEGORY_MARKER_ATTR = 'data-ls-category';
+/** The core's attribute for a nested host's own previous category (MOVE-4, MOVE-5); empty is "none before". */
+const PREVIOUS_CATEGORY_MARKER_ATTR = 'data-ls-previous-category';
 
 /**
  * The phrase host a nested `<Phrase>` renders, built from its vnode for the enclosing block's tree:
  * phrase-marked, with its own category (the default `''` included, so the block's registration
  * records the phrase where the component does), the attributes that fall through to it, and its
- * slot's content. Its params go on the tree node.
+ * slot's content. Its params go on the tree node. Naming its own category, it takes no move from
+ * the block; a previous category of its own is marked the way the core stamps one (MOVE-4), so
+ * the block's walk reads the phrase as moved, and never as an attribute of its content.
  */
 function phraseHost(vnode: VNode): VNode {
-    const {
-        tag,
-        category,
-        params: _params,
-        ...attrs
-    } = (vnode.props ?? {}) as {
+    const props = (vnode.props ?? {}) as {
         tag?: string;
         category?: string;
         params?: unknown;
+        previousCategory?: string | null;
+        'previous-category'?: string | null;
     } & Record<string, unknown>;
+    const { tag, category, params: _params, previousCategory, 'previous-category': kebab, ...attrs } = props;
+    const previous = previousCategory ?? kebab;
     return h(
         tag ?? 'span',
-        mergeProps({ [PHRASE_MARKER_ATTR]: '', [CATEGORY_MARKER_ATTR]: category ?? '' }, attrs),
+        mergeProps(
+            {
+                [PHRASE_MARKER_ATTR]: '',
+                [CATEGORY_MARKER_ATTR]: category ?? '',
+                ...(previous === undefined || previous === null ? {} : { [PREVIOUS_CATEGORY_MARKER_ATTR]: previous }),
+            },
+            attrs
+        ),
         slotContent(vnode)
     );
 }

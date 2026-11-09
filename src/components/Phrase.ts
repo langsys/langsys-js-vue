@@ -20,6 +20,13 @@ import { serverScope, useT } from '../composables.js';
 export interface PhraseProps {
     /** Category the phrase registers under (disambiguation for translators). */
     category?: string;
+    /**
+     * The category this phrase was registered under before it moved to `category` (MOVE-1): `''`
+     * for none, unset or `null` for no move. Its translations follow it instead of being made and
+     * charged again, and until the catalog holds it under `category` the previous one's renders,
+     * with the host carrying `data-ls-previous-category` (MOVE-4, MOVE-5). Never part of its key.
+     */
+    previousCategory?: string | null;
     /** Interpolation params. Write placeholders as `%n%` / `%name%` in the markup — the portable form (see the note on the component). */
     params?: Record<string, ParamPrimitive>;
     /** Host element tag. Defaults to `<span>`. */
@@ -58,6 +65,8 @@ export const Phrase = defineComponent({
     name: 'Phrase',
     props: {
         category: { type: String, default: '' },
+        // `null` and unset are both "did not move"; `''` is a value (MOVE-1).
+        previousCategory: { type: [String, null] as PropType<string | null>, default: undefined },
         params: { type: Object as PropType<Record<string, ParamPrimitive>>, default: () => ({}) },
         tag: { type: String, default: 'span' },
     },
@@ -73,13 +82,18 @@ export const Phrase = defineComponent({
         let unregistered = false;
         /** The tree last registered, serialized: a re-render that changed the slot registers again. */
         let registered: string | null = null;
+        /** The move, as the core's options take it: nothing when the phrase did not move (MOVE-1). */
+        const moved = () =>
+            props.previousCategory === undefined || props.previousCategory === null
+                ? {}
+                : { previousCategory: props.previousCategory };
 
         // Fallback: a slot the tree cannot express (a component, v-html) is handled by the core's
         // DOM class after mount, as before.
         const create = () => {
             if (!host.value || tree || unregistered) return;
             instance?.destroy();
-            instance = new VanillaPhrase(host.value, { category: props.category, params: props.params });
+            instance = new VanillaPhrase(host.value, { category: props.category, ...moved(), params: props.params });
         };
         // The tree path registers on mount, whenever `t` changes, and after an update that changed
         // the tree (see `sync`), since rendering registers nothing.
@@ -91,6 +105,7 @@ export const Phrase = defineComponent({
             // Claims the host, as a read for a compiled variable; returned for Vue's errorHandler (see <Translate>).
             return registerBlock(tree, {
                 category: props.category,
+                ...moved(),
                 params: props.params,
                 host: host.value,
                 ...(unregistered ? { register: false } : {}),
@@ -110,7 +125,7 @@ export const Phrase = defineComponent({
         onActivated(register);
         watch(t, register, { flush: 'post' });
         watch(
-            () => props.category,
+            () => [props.category, props.previousCategory],
             () => (tree ? register() : create())
         );
         watch(
@@ -146,7 +161,7 @@ export const Phrase = defineComponent({
             unregistered = converted.variable;
             if (unregistered) warnUnregistered(UNREGISTERED_REASON);
             tree = phrase;
-            const opts = { category: props.category, params: props.params };
+            const opts = { category: props.category, ...moved(), params: props.params };
             // On a server, inside the request scope, provided or entered (see <Translate>).
             const [rendered] = (
                 scope
@@ -163,7 +178,8 @@ export const Phrase = defineComponent({
                 : slot;
             // The host carries what the core set on the phrase host: a translation from the catalog
             // is marked resolved (GATE-10), so no DOM reader, on the client or in an enclosing
-            // block's walk, files it as source.
+            // block's walk, files it as source; one read from the previous category carries
+            // `data-ls-previous-category` (MOVE-5), and loses it when a later render no longer does.
             return h(props.tag, { ref: host, ...element?.attrs, [PHRASE_MARKER_ATTR]: '' }, [
                 ...children,
                 ...converted.teleports,
