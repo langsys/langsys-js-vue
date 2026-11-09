@@ -236,16 +236,22 @@ describe('a <Phrase> nested in a <Translate>', () => {
             await scope.run(() => renderToString(createSSRApp(Nested(phraseProps))));
             return Object.values(scope.seed().blocks);
         };
-        const [moved] = await record({ previousCategory: 'Header' });
         const [control] = await record({});
-        expect(moved!.customId).toBe(CURRENT_ID);
-        expect(moved!.customId).toBe(control!.customId);
-        expect(moved!.tokens).toEqual(control!.tokens);
-        // The nested host names its move beside its category, as MOVE-4 has markup name it;
-        // the block itself did not move.
-        expect(moved!.content).toContain('data-ls-category="Checkout" data-ls-previous-category="Header"');
         expect(control!.content).not.toContain('data-ls-previous');
-        expect(moved!.previousCategory).toBeUndefined();
+        // Both spellings a template or h() produces: the vnode's key is `previous-category` from a
+        // compiled template and `previousCategory` from h().
+        for (const props of [{ previousCategory: 'Header' }, { 'previous-category': 'Header' }]) {
+            const [moved] = await record(props);
+            expect(moved!.customId).toBe(CURRENT_ID);
+            expect(moved!.customId).toBe(control!.customId);
+            expect(moved!.tokens).toEqual(control!.tokens);
+            // The nested host names its move beside its category, as MOVE-4 has markup name it,
+            // and the prop never reaches the content as an attribute of its own.
+            expect(moved!.content).toContain('data-ls-category="Checkout" data-ls-previous-category="Header"');
+            expect(moved!.content).not.toMatch(/[\s"]previous-?category=/i);
+            // The block itself did not move.
+            expect(moved!.previousCategory).toBeUndefined();
+        }
     });
 
     it('control: with no previous category of its own it is served as source', async () => {
