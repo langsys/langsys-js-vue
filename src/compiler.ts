@@ -449,9 +449,11 @@ export function rewriteTCalls(source: string, onUnnamed?: (variables: NamedVaria
         // category, an object is params, unless it is a category ref from `inCategory()` (MOVE-1),
         // which the core tells apart by the brand it sets under the registry symbol
         // `langsys.category`, so a ref from any copy of the core is one. Read as params, the ref
-        // would be spread into them and the phrase registered with no category.
+        // would be spread into them and the phrase registered with no category. The brand is
+        // found through `Object` and the symbol's own constructor, never the `Symbol` global,
+        // which a Vue 3.4 template cannot reach.
         else if (others.length === 1)
-            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' && !(a && a[Symbol.for('langsys.category')] === true) ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;
+            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' && !(a && Object.getOwnPropertySymbols(a).some((s) => s.constructor.keyFor(s) === 'langsys.category' && a[s] === true)) ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;
         else args = `${JSON.stringify(phrase)}, ${others[0]}, { ...${params}, ...(${others[1]}) }`;
         out += source.slice(cursor, m.index) + m[1] + `t(${args})`;
         cursor = close + 1;

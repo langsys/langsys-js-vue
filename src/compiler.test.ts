@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { derivePlaceholderNames } from 'langsys-js-typescript/pure';
 import { expressionShape, langsysTransform, nameVariables, rewriteTCalls } from './compiler.js';
-import { DontTranslate, LangsysApp, Phrase, Translate, useT } from './index.js';
+import { DontTranslate, inCategory, LangsysApp, Phrase, Translate, useT } from './index.js';
 import { createRequestScope } from './server.js';
 import { slotToBlockNodes } from './block-vnodes.js';
 
@@ -445,6 +445,45 @@ describe('MARK-4 — a <Phrase> nested in a <Translate>', () => {
     });
 });
 
+/**
+ * The globals a template expression reaches on Vue 3.4, the oldest Vue this package supports
+ * (`@vue/shared` 3.4's GLOBALS_ALLOWED). Any other name is read off the component, which has
+ * none; 3.5 adds `Symbol`.
+ */
+const VUE_34_TEMPLATE_GLOBALS = new Set(
+    'Infinity,undefined,NaN,isFinite,isNaN,parseFloat,parseInt,decodeURI,decodeURIComponent,encodeURI,encodeURIComponent,Math,Number,Date,Array,Object,Boolean,String,RegExp,Map,Set,JSON,Intl,BigInt,console,Error'.split(
+        ','
+    )
+);
+
+/** The names an expression reads that nothing in it declares. */
+function freeIdentifiers(expression: string): Set<string> {
+    const free = new Set<string>();
+    const walk = (node: unknown, bound: Set<string>): void => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) return node.forEach((n) => walk(n, bound));
+        const n = node as Record<string, unknown> & { type?: string };
+        if (n.type === 'Identifier') {
+            if (!bound.has(n.name as string)) free.add(n.name as string);
+        } else if (n.type === 'ArrowFunctionExpression' || n.type === 'FunctionExpression') {
+            const inner = new Set(bound);
+            for (const p of n.params as Array<{ type: string; name?: string }>)
+                if (p.type === 'Identifier') inner.add(p.name!);
+            walk(n.body, inner);
+        } else if (n.type === 'MemberExpression' || n.type === 'OptionalMemberExpression') {
+            walk(n.object, bound);
+            if (n.computed) walk(n.property, bound);
+        } else if (n.type === 'ObjectProperty') {
+            if (n.computed) walk(n.key, bound);
+            walk(n.value, bound);
+        } else
+            for (const [k, v] of Object.entries(n))
+                if (!['loc', 'start', 'end', 'extra', 'range'].includes(k) && !k.endsWith('Comments')) walk(v, bound);
+    };
+    walk(babelParse(`(${expression})`).program.body, new Set());
+    return free;
+}
+
 describe('VAR-6 — t() calls in templates', () => {
     it('rewrites a template-literal phrase into placeholders and params, keeping the other arguments', () => {
         expect(rewriteTCalls('t(`Hello ${user.name}`)')).toBe('t("Hello {name}", { "name": (user.name) })');
@@ -482,9 +521,32 @@ describe('VAR-6 — t() calls in templates', () => {
             expect(out.content, `ssr: ${ssr}`).toContain('"Welcome back, {first_name}", \'UI\', { "first_name": (');
             // The arguments of the call that reads the category at run time are its own, never `_ctx`'s.
             expect(out.content, `ssr: ${ssr}`).toContain(
-                `"Bye, {first_name}", ...((p, a) => (typeof a === 'object' && !(a && a[Symbol.for('langsys.category')] === true) ? [{ ...p, ...a }] : [a, p]))({ "first_name": (`
+                `"Bye, {first_name}", ...((p, a) => (typeof a === 'object' && !(a && Object.getOwnPropertySymbols(a).some((s) => s.constructor.keyFor(s) === 'langsys.category' && a[s] === true)) ? [{ ...p, ...a }] : [a, p]))({ "first_name": (`
             );
         }
+    });
+
+    it('the call that reads its category at run time reaches no global a Vue 3.4 template lacks', () => {
+        const out = rewriteTCalls('t(`Bye, ${user.firstName}`, where)');
+        const globals = [...freeIdentifiers(out)].filter((name) => !['t', 'user', 'where'].includes(name));
+        expect(globals.length, 'control: the rewrite reads a global of its own').toBeGreaterThan(0);
+        expect(globals.filter((name) => !VUE_34_TEMPLATE_GLOBALS.has(name))).toEqual([]);
+
+        // Run as Vue 3.4 runs it: a global outside its list is read off the component, which has none.
+        const run = (where: unknown) =>
+            new Function('t', 'user', 'where', 'Symbol', `return ${out}`)(
+                (...args: unknown[]) => args,
+                { firstName: 'Ana' },
+                where,
+                undefined
+            ) as unknown[];
+        expect(run('UI')).toEqual(['Bye, {first_name}', 'UI', { first_name: 'Ana' }]);
+        expect(run({ extra: 1 })).toEqual(['Bye, {first_name}', { first_name: 'Ana', extra: 1 }]);
+        const ref = inCategory('Checkout', { previousCategory: 'Header' });
+        expect(run(ref)).toEqual(['Bye, {first_name}', ref, { first_name: 'Ana' }]);
+        // An object carrying a symbol of the same description, outside the registry, is params.
+        const lookalike = { [Symbol('langsys.category')]: true, extra: 2 };
+        expect(run(lookalike)[1]).toMatchObject({ first_name: 'Ana', extra: 2 });
     });
 
     it('a template t() renders the translation of the placeholder phrase', async () => {

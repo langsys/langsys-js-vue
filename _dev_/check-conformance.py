@@ -178,38 +178,52 @@ def parse_args(argv):
     return pos, carries, core
 
 
+def restatus(conf, rid, status, tier, new_status, new_tier):
+    """`rid`'s row moved from one status and tier to another, the tally moved with it, so only the
+    rule a plant targets can catch it, whatever statuses the file holds today."""
+    conf = conf.replace(f'| {rid} | {status} | {tier} |', f'| {rid} | {new_status} | {new_tier} |', 1)
+    conf = re.sub(rf'(\| `{re.escape(status)}` \| )(\d+)', lambda m: f'{m.group(1)}{int(m.group(2)) - 1}', conf, count=1)
+    if re.search(rf'\| `{re.escape(new_status)}` \| \d+', conf):
+        return re.sub(rf'(\| `{re.escape(new_status)}` \| )(\d+)', lambda m: f'{m.group(1)}{int(m.group(2)) + 1}', conf, count=1)
+    return re.sub(rf'(\| `{re.escape(status)}` \| \d+ \|\n)', lambda m: f'{m.group(1)}| `{new_status}` | 1 |\n', conf, count=1)
+
+
 def selftest(spec, conf, carries, core):
-    # Each mutation must be CAUGHT, or the validator's pass means nothing.
+    # Each plant must be CAUGHT by the rule it breaks, or the validator's pass means nothing. A
+    # plant counts only when that rule's own error is raised: one that another rule catches first
+    # (a cell boundary swallowed, a tally left unbalanced) would pass with its rule removed.
     blob = git_blob(spec.encode())
     mutants = {
-        'duplicate id': conf.replace('| GATE-2 |', '| GATE-1 |', 1),
-        'wildcard family row': conf.replace('| REG-1 |', '| REG-1..12 |', 1),
-        'header names another blob': conf.replace(blob, 'deadbeef' * 5, 1),
-        'header names no spec version': re.sub(r'\| specVersion \|[^\n]*', '| specVersion | **0.0.0** — 1 rules |', conf, count=1),
-        'implemented with mock tier': conf.replace('| BIND-1 | implemented | n/a (pure) |', '| BIND-1 | implemented | mock |', 1),
-        'provisional with a real tier': re.sub(r'(\| [A-Z]+-\d+ \| provisional \| )mock', r'\1contract', conf, count=1),
-        'delegated without probe': re.sub(r'(\| CAT-1 \| delegated \| - \| )[^\n]*', r'\1Core row CAT-1 only.', conf, count=1),
-        'n/a profile on a browser rule': conf.replace('| HINT-3 | delegated | - |', '| HINT-3 | n/a (profile: server) | - |', 1),
-        'missing rule': re.sub(r'\n\| CONF-3 \|[^\n]*', '', conf, count=1),
-        'tally count altered': re.sub(r'(\| `delegated` \| )(\d+)', lambda m: f'{m.group(1)}{int(m.group(2)) + 1}', conf, count=1),
-        'tally total altered': re.sub(r'(\| \*\*total\*\* \| \*\*)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2)) + 1}', conf, count=1),
+        'duplicate id': (conf.replace('| GATE-2 |', '| GATE-1 |', 1), 'GATE-1: graded 2 times'),
+        'wildcard family row': (conf.replace('| REG-1 |', '| REG-1..12 |', 1), 'not a single rule id'),
+        'header names another blob': (conf.replace(blob, 'deadbeef' * 5, 1), "Spec revision read row must name the spec file's blob"),
+        'header names no spec version': (re.sub(r'\| specVersion \|[^\n]*', '| specVersion | **0.0.0** — 1 rules |', conf, count=1), 'specVersion row must read'),
+        'implemented with mock tier': (conf.replace('| BIND-1 | implemented | n/a (pure) |', '| BIND-1 | implemented | mock |', 1), 'BIND-1: implemented needs'),
+        'provisional with a real tier': (restatus(conf, 'BIND-1', 'implemented', 'n/a (pure)', 'provisional', 'contract'), 'BIND-1: provisional needs mock'),
+        'delegated without probe': (re.sub(r'(\| CAT-1 \| delegated \| - \| )[^|\n]*', r'\1Core row CAT-1 only. ', conf, count=1), 'CAT-1: delegated evidence must name an absence probe'),
+        'n/a profile on a browser rule': (restatus(conf, 'HINT-3', 'delegated', '-', 'n/a (profile: server)', '-'), 'HINT-3: n/a (profile) but its Profiles line names a claimed profile'),
+        'missing rule': (re.sub(r'\n\| CONF-3 \|[^\n]*', '', conf, count=1), 'CONF-3: not graded'),
+        'tally count altered': (re.sub(r'(\| `delegated` \| )(\d+)', lambda m: f'{m.group(1)}{int(m.group(2)) + 1}', conf, count=1), "tally: 'delegated' is"),
+        'tally total altered': (re.sub(r'(\| \*\*total\*\* \| \*\*)(\d+)', lambda m: f'{m.group(1)}{int(m.group(2)) + 1}', conf, count=1), 'tally: total is'),
     }
     for rid, ctext in carries.items():
         cb = git_blob(ctext.encode())
-        mutants[f'{rid} carried without the flag'] = None  # run with no carries below
-        mutants[f'{rid} row removed'] = re.sub(rf'\n\| {rid} \|[^\n]*', '', conf, count=1)
-        mutants[f'header drops the {rid} source blob'] = conf.replace(cb, 'cafef00d' * 5, 1)
-        mutants[f'{rid} row names no source blob'] = re.sub(rf'(\| {rid} \| [^|]*\| [^|]*\| )([^\n]*)', lambda m: m.group(1) + m.group(2).replace(cb[:8], 'xxxxxxxx'), conf, count=1)
+        mutants[f'{rid} carried without the flag'] = (None, f'{rid}: not in spec')  # run with no carries below
+        mutants[f'{rid} row removed'] = (re.sub(rf'\n\| {rid} \|[^\n]*', '', conf, count=1), f'{rid}: not graded')
+        mutants[f'header drops the {rid} source blob'] = (conf.replace(cb, 'cafef00d' * 5, 1), f'of the spec {rid} is carried from')
+        mutants[f'{rid} row names no source blob'] = (re.sub(rf'(\| {rid} \| [^|]*\| [^|]*\| )([^\n]*)', lambda m: m.group(1) + m.group(2).replace(cb[:8], 'xxxxxxxx'), conf, count=1), f"{rid}: a carried rule's evidence must name spec")
     if core:
-        mutants['citation tier altered'] = re.sub(r'(Core row GATE-1: `[^`]+` \(`)([^`]+)(`\))', lambda m: m.group(1) + ('n/a (pure)' if m.group(2) != 'n/a (pure)' else 'contract') + m.group(3), conf, count=1)
-        mutants['citation of a row the core lacks'] = conf.replace('Core row CAT-1:', 'Core row CAT-99:', 1)
+        mutants['citation tier altered'] = (re.sub(r'(Core row GATE-1: `[^`]+` \(`)([^`]+)(`\))', lambda m: m.group(1) + ('n/a (pure)' if m.group(2) != 'n/a (pure)' else 'contract') + m.group(3), conf, count=1), 'cites core row GATE-1 as')
+        mutants['citation of a row the core lacks'] = (conf.replace('Core row CAT-1:', 'Core row CAT-99:', 1), 'cites core row CAT-99, which the core file does not hold')
     ok = True
-    for name, mutant in mutants.items():
+    for name, (mutant, expect) in mutants.items():
         if mutant is None: errs = check(spec, conf, {}, core)[0]
         else: errs = check(spec, mutant, carries, core)[0]
-        caught = bool(errs)
+        caught = any(expect in e for e in errs)
         ok &= caught
         print(f'  selftest {"CAUGHT" if caught else "MISSED"}  {name}')
+        if not caught:
+            for e in errs[:3]: print(f'    raised instead: {e}')
     base_errs = check(spec, conf, carries, core)[0]
     print(f'  baseline file: {"valid" if not base_errs else "INVALID"}')
     for e in base_errs: print(f'    ✗ {e}')

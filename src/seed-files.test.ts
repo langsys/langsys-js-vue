@@ -202,13 +202,15 @@ it('ids, raw keys, user tokens and caller addresses are unique across the files,
     }>;
     const keys = files.flatMap((f) => f.document.keys) as Array<{ id: string; key: string }>;
     const tokens = projects.map((p) => p.user.token);
-    const addresses = files.flatMap((file) =>
+    const addressesOf = (file: SeedFile<string>) =>
         Array.from({ length: file.passes }, (_, pass) =>
-            Object.keys(worldsOf(file)).flatMap((name) =>
+            file.worlds.flatMap((name) =>
                 file.instances(name, pass).flatMap((w) => Array.from({ length: 6 }, (_, n) => w.addressAt(n)))
             )
-        ).flat()
-    );
+        ).flat();
+    for (const file of files)
+        expect(addressesOf(file).length, `${file.slug}: its instances' addresses are checked`).toBeGreaterThan(0);
+    const addresses = files.flatMap(addressesOf);
     for (const [what, values] of [
         ['project id', projects.map((p) => p.id)],
         ['key id', keys.map((k) => k.id)],
@@ -233,16 +235,6 @@ it('ids, raw keys, user tokens and caller addresses are unique across the files,
         expect(c! >= 1 && c! <= 240 && d! >= 1 && d! <= 250, address).toBe(true);
     }
 });
-
-/** The world names a seed file declares, read back from the pools it built. */
-function worldsOf(file: SeedFile<string>): Record<string, true> {
-    const names: Record<string, true> = {};
-    for (const project of file.document.projects as Array<{ title: string }>) {
-        const name = new RegExp(`^vue ${file.slug} (.+)#\\d+ pass \\d+ `).exec(project.title)?.[1];
-        if (name) names[name] = true;
-    }
-    return names;
-}
 
 it('the playground and the Nuxt run reach the clone as the world their seed file declares, in every pass', () => {
     for (const name of SCRIPT_FILES) {

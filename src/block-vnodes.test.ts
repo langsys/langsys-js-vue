@@ -117,6 +117,10 @@ describe('slot vnodes → the core tree', () => {
             });
             const bound = createVNode('b', { [key]: 'Tip' }, 'Bold words', 8 /* PROPS */, [key]);
             expect(slotToBlockNodes([h('p', 'Pricing'), bound]).variable, key).toBe(true);
+            // Bound under a dynamic argument (`:[name].prop`), Vue marks the element FULL_PROPS and
+            // lists no dynamic props.
+            const anyName = createVNode('b', { [key]: 'Tip' }, 'Bold words', 16 /* FULL_PROPS */);
+            expect(slotToBlockNodes([h('p', 'Pricing'), anyName]).variable, `${key}, FULL_PROPS`).toBe(true);
             if (!fixed.ok) continue;
             const [, b] = translatedToVNodes(
                 [

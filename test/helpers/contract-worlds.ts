@@ -11,12 +11,13 @@ import { callerAddress, MAX_INSTANCES } from './contract-addresses.mjs';
  * `npx vitest run --project unit src/seed-files.test.ts -u` writes the JSON again. A changed seed
  * file takes effect at the next reseed.
  *
- * Every case has projects of its own, so a world is a pool of identical instances and a case
- * takes the next unused one: no case reads another's writes, whatever order the cases run in.
- * What a run writes stays until the clone is reseeded, so a file holds its worlds `passes` times
- * over, and a run takes the pass `LANGSYS_CONTRACT_PASS` names (0 when unset): `npm run
- * test:contract` takes pass 0, and the mutation runner gives its baseline and each mutation a
- * pass of their own, so one reseed serves them all.
+ * A world is a pool of identical instances, and `take` hands out the next unused one. Cases that
+ * would read each other's writes take an instance each; cases that register texts of their own
+ * share one, and each reads back only its own texts. What a run writes stays until the clone is
+ * reseeded, so a file holds its worlds `passes` times over, and a run takes the pass
+ * `LANGSYS_CONTRACT_PASS` names (0 when unset): `npm run test:contract` takes pass 0, and the
+ * mutation runner gives its baseline and each mutation a pass of their own, so one reseed serves
+ * them all.
  *
  * An instance's ids, keys, user token and caller addresses are fixed by its place in the file,
  * inside Vue's ranges (langsys docs/sdk-test-clone.md): ids `7900xxxx-…`, raw keys `vue-…`, token
@@ -130,6 +131,8 @@ export interface SeedFile<N extends string> {
     index: number;
     /** How many times over the file holds its worlds: one pass per run between reseeds. */
     passes: number;
+    /** The names of the worlds the file declares. */
+    worlds: readonly N[];
     /** What the clone's seeder reads: `{projects, keys}`. */
     document: { projects: Record<string, unknown>[]; keys: Record<string, unknown>[] };
     /** The next unused instance of a world, in the run's pass. */
@@ -281,6 +284,7 @@ export function seedFile<N extends string>(
         slug,
         index,
         passes,
+        worlds: Object.keys(worlds) as N[],
         document: { projects, keys },
         instances: (name, pass) => [...poolOf(name, pass)],
         take(name) {

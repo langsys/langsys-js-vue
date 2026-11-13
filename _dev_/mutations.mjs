@@ -882,7 +882,7 @@ export const MUTATIONS = [
         file: 'src/compiler.ts',
         edits: [
             {
-                find: "            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' && !(a && a[Symbol.for('langsys.category')] === true) ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;\n",
+                find: "            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' && !(a && Object.getOwnPropertySymbols(a).some((s) => s.constructor.keyFor(s) === 'langsys.category' && a[s] === true)) ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;\n",
                 replace: '            args = `${JSON.stringify(phrase)}, { ...${params}, ...(${others[0]}) }`;\n',
             },
         ],
@@ -1562,7 +1562,12 @@ export const MUTATIONS = [
         rules: 'MOVE-1',
         what: 'the rewritten t() reads an inCategory() ref decided at run time as params, so the phrase registers with no category',
         file: 'src/compiler.ts',
-        edits: [{ find: " && !(a && a[Symbol.for('langsys.category')] === true)", replace: '' }],
+        edits: [
+            {
+                find: " && !(a && Object.getOwnPropertySymbols(a).some((s) => s.constructor.keyFor(s) === 'langsys.category' && a[s] === true))",
+                replace: '',
+            },
+        ],
         check: vitest('src/category-move.test.ts'),
     },
     {
@@ -1630,6 +1635,42 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/move-categories-contract.test.ts'),
+    },
+    {
+        id: 'M129',
+        rules: 'MOVE-1, VAR-6',
+        what: "the rewritten t() finds a category ref's brand through the Symbol global, which a Vue 3.4 template reads off the component: a params object or a ref decided at run time throws",
+        file: 'src/compiler.ts',
+        edits: [
+            {
+                find: "Object.getOwnPropertySymbols(a).some((s) => s.constructor.keyFor(s) === 'langsys.category' && a[s] === true)",
+                replace: "a[Symbol.for('langsys.category')] === true",
+            },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M130',
+        rules: 'MOVE-1',
+        what: "the rewritten t() takes any symbol described 'langsys.category' for the core's registry brand, so an app's params object carrying one is read as a category",
+        file: 'src/compiler.ts',
+        edits: [
+            { find: "s.constructor.keyFor(s) === 'langsys.category'", replace: "s.description === 'langsys.category'" },
+        ],
+        check: vitest('src/compiler.test.ts'),
+    },
+    {
+        id: 'M131',
+        rules: 'VAR-1, VAR-7',
+        what: 'a translatable attribute bound with .prop or .attr under a dynamic argument (FULL_PROPS) is not read as dynamic, so the block stores the value in its content',
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '        return Object.keys(vnode.props ?? {}).some((name) => TRANSLATABLE.has(attributeName(name)));\n',
+                replace: '        return Object.keys(vnode.props ?? {}).some((name) => TRANSLATABLE.has(name));\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts'),
     },
 ];
 
