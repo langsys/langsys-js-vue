@@ -85,4 +85,8 @@ Remove `<dir>` when done.
 - `npm run test:nuxt` — the Nuxt checks above, unattended.
 - `npm run test:mutations` — breaks the code on purpose, once per mutation CONFORMANCE.md cites, and requires a failing test each time.
 
+### The documentation check (ICU-7)
+
+`src/docs-icu7.test.ts` runs with `npm test`, needs no network, and reads the README, the SSR guide, this guide, `_dev_/*.md`, and `example/` including `example/nuxt/`. Phrases in all of them are written flat (`You have {count} new messages`); the check fails on a `plural`, `select` or `selectordinal` argument anywhere in them. ICU may appear in three roles: what the catalog returns, what a legacy plural file converts into (MIG-4), and a counter-example marked `❌` beside the flat phrase that replaces it. Each such passage is named in the test's `EXEMPT` list with its role, so a new ICU example fails until someone decides it belongs there. The changelog is outside the check.
+
 What each rule's evidence is: [CONFORMANCE.md](CONFORMANCE.md).

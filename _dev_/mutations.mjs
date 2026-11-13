@@ -1424,6 +1424,20 @@ export const MUTATIONS = [
         ],
         check: vitest('src/block-vnodes.test.ts'),
     },
+    {
+        id: 'M115',
+        rules: 'ICU-7',
+        what: 'an ICU plural planted in a phrase of the playground',
+        file: 'example/App.vue',
+        edits: [
+            {
+                find: "        <h1>{{ t('Welcome to the Langsys + Vue demo', 'Demo') }}</h1>\n",
+                replace:
+                    "        <h1>{{ t('{count, plural, one {# visitor} other {# visitors}} welcome', 'Demo', { count: 2 }) }}</h1>\n",
+            },
+        ],
+        check: vitest('src/docs-icu7.test.ts'),
+    },
 ];
 
 /**

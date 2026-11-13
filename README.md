@@ -234,9 +234,30 @@ t('You have {count} new messages', 'Notifications', { count: 3, extra: 'x' });
 // ❌ Object literal may only specify known properties, and 'extra' does not exist
 ```
 
-Allowed value types: `string | number | Date | boolean`. Since base SDK 0.3.0, values are locale-formatted: numbers go through `Intl.NumberFormat` (`1234.5` → `1.234,5` in `de-DE`) and `Date` values through `Intl.DateTimeFormat` with the medium date style. Pass a string to opt out of formatting. Formatting always uses the catalog locale (falling back to `en`), never the host's default locale, so server and client render identically.
+Allowed value types: `string | number | Date | boolean`. Values are locale-formatted: numbers go through `Intl.NumberFormat` (`1234.5` → `1.234,5` in `de-DE`) and `Date` values through `Intl.DateTimeFormat` with the medium date style. Pass a string to opt out of formatting. Formatting always uses the catalog locale (falling back to `en`), never the host's default locale, so server and client render identically.
 
-> Future versions will swap the simple `{name}` runtime for full ICU MessageFormat — adding plural / select — without changing the public signature. Style-less ICU arguments (`{n, number}`, `{d, date}`, `{t, time}`) already format as of base SDK 0.3.0. Today's `t('{count} items', 'Cart', { count })` will evolve to `t('{count, plural, one {# item} other {# items}}', 'Cart', { count })`.
+#### Plurals and gender: write the sentence flat
+
+**Never write ICU.** Write the sentence as it reads, with the count or the name as a `{placeholder}`, and pass the value as a param. Langsys makes each language's plural and gender forms, the base language included:
+
+```typescript
+t('You have {count} new messages', 'Inbox', { count }); // ✅
+t('{count, plural, one {# new message} other {# new messages}}', 'Inbox', { count }); // ❌ ICU written by hand
+```
+
+Langsys makes the forms once it has checked the phrase: a translation run checks its own phrases, and an hourly check covers any phrase a run missed. Until then the base language shows the sentence as written. The catalog holds the forms as ICU MessageFormat. Every request carries `X-Langsys-Capabilities: icu`, and `t()` renders the form the count selects with the plural rules of the loaded catalog's locale (Russian's four categories, Arabic's six). Your code passes the same params in every language. A count and the noun it inflects belong in one phrase, or no plural form can reach the noun. Numbers format the same inside a form as outside one.
+
+A sentence that says something different at zero is its own phrase, chosen in code, and so is a sentence that differs in the source language itself:
+
+```vue
+<p>{{ count === 0 ? t('Your inbox is empty.', 'Inbox') : t('You have {count} new messages', 'Inbox', { count }) }}</p>
+```
+
+In a language with grammatical gender, Langsys can turn a plain `{name}` into `{name_gender, select, …}` in the translation. Pass `name_gender` (`'female'`, `'male'` or `'other'`) beside `name` when you know it. `t()` types it as an optional param for every placeholder, `<Translate>` and `<Phrase>` take it in `params` as it is, and without it the `other` form renders:
+
+```typescript
+t('{name} has been invited', 'Team', { name: 'Ana', name_gender: 'female' });
+```
 
 #### Categorization disambiguates context
 
@@ -318,7 +339,7 @@ If you wrote {name} or {{ name }} in markup, your framework's template compiler
 substituted it before Langsys saw the text — write %name% instead.
 ```
 
-The check fires for `<Translate>` and `<Phrase>`, treats ICU slots (`{n, plural, …}`) as legitimate, re-runs only when the params _key set_ changes (a ticking count won't spam), and is silent in production. Note the warning names both brace spellings because it's shared across bindings — in Vue only `{{ }}` is eaten; a single `{name}` survives and works, so it never trips this warning.
+The check fires for `<Translate>` and `<Phrase>`, counts a param as used where its `{name}` or `%name%` appears (and a `name_gender` param wherever `{name}` does), re-runs only when the params _key set_ changes (a ticking count won't spam), and is silent in production. Note the warning names both brace spellings because it's shared across bindings — in Vue only `{{ }}` is eaten; a single `{name}` survives and works, so it never trips this warning.
 
 `<Translate>` props: `category?`, `previousCategory?` ([moving content](#moving-content-to-another-category)), `custom_id?`, `label?`, `tag?` (defaults to `translate`), `params?`. `class` and other attributes fall through to the host element.
 

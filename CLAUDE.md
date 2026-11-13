@@ -49,6 +49,7 @@ src/
     block-vnodes.test.ts      # slot → tree mapping, fallbacks, re-attachment through `source`
     block-ssr.test.ts         # <Translate>/<Phrase> served translated and stamped; hydration parity
     category-move.test.ts     # MOVE-1..5: previousCategory through <Translate>/<Phrase>/nested <Phrase>, inCategory() via useT() and the compiler's t() rewrite; stamps, ids, the scope's record
+    docs-icu7.test.ts         # ICU-7: README, README-SSR, TESTING, _dev_/*.md and example/ write phrases flat; the scan's own failing cases
     compiler.test.ts          # VAR-2 shared naming vectors, the transform on all four compile paths, t() rewriting, VAR-7, values inside an exclusion (TOK-1)
     locale-headers.test.ts    # FRM-6: localeHeaders() re-exported and forwarded; the scope's locale inside a scope
     variables-contract.test.ts # VAR-1/6/7 against the contract double: two users, with and without the transform (own process)
@@ -63,6 +64,7 @@ src/
     ssr-register.test.ts      # a server render registers inside its request scope (provided or run), or not at all
     ssr-credentials-contract.test.ts # SRV-2: two concurrent server renders, each under its own scope's project id and key; none inherits init()'s (own process)
 test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
+test/helpers/icu-docs.ts      # ICU-7's documentation scan: an ICU construct outside a named exempt passage is a finding
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
 test/fixtures/var-naming-vectors.json     # vendored byte-exact from langsys-js-typescript — never edit
 test/fixtures/snapshot-vectors.json       # vendored byte-exact from langsys-js-typescript — never edit
@@ -260,6 +262,7 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **A rewritten template expression drops Vue's parse of it (`exp.ast = undefined`).** With `prefixIdentifiers` — an inlined `<script setup>`, any server build — Vue has already parsed the expression and slices the new text at the old offsets, which emits broken code (M49). Function-mode compiles attach no AST, so only the inline and SSR tests catch it.
 - **`useServerMessage` never reads the catalog itself.** The fallback decision is the core's `renderServerMessage()`; the composable only adds the dependency on `useT()` so a mounted list re-renders. Never pass `entry.message` as a key.
 - **Anything that asks the core for the locale or catalog on the server runs inside `serverScope()`.** The core resolves the scope from the async context only; a scope provided to the app (Nuxt) is invisible to it. `useServerMessage` renders and `localeHeaders()` answers inside `scope.run` (M59, M60). `serverScope()` reads the provided scope wherever Vue can inject (`hasInjectionContext()`), so code Nuxt runs in the app's context finds it too (M61). `LangsysApp.localeHeaders()` stays the core's: the proxy keeps exactly two overrides.
+- **Every phrase a developer reads is written flat (ICU-7).** The README, README-SSR, TESTING, `_dev_/*.md` and every file under `example/` write the sentence with `{placeholders}` and never a `plural`, `select` or `selectordinal`; Langsys makes the forms. ICU appears there only as what the catalog returns, as MIG-4's conversion, or as a counter-example marked `❌` beside its flat phrase, and each such passage is named in `EXEMPT` in `src/docs-icu7.test.ts`, so a new one fails `npm test` until someone names it (M115). CHANGELOG, CONFORMANCE and this file are outside the scan.
 - **`contract-fixture/` and the files in `test/fixtures/` are vendored byte-exact.** Never edit or reformat them (all are in `.prettierignore`); refresh by copying from the source repo at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`, in a detached effect scope.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads. The core subscribes inside `init()`, which an app may call from a component; a watcher owned by that component's scope stops when it unmounts and the SDK stops following the locale (M55).
