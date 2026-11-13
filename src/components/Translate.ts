@@ -12,6 +12,7 @@ import {
 } from 'langsys-js-typescript';
 import { UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
 import { serverScope, useT } from '../composables.js';
+import { useUnitCategory } from './unit-category.js';
 
 /**
  * Props for the Vue `Translate` component. Mirrors the React/Svelte components
@@ -19,7 +20,11 @@ import { serverScope, useT } from '../composables.js';
  * `class`/`className` prop is declared.
  */
 export interface TranslateProps {
-    /** Optional category under which tokens are registered. Helps translators disambiguate. */
+    /**
+     * Optional category under which tokens are registered. Helps translators disambiguate. Unset
+     * inside another `<Translate>` or a `<Phrase>`, it is the enclosing unit's, and so is the
+     * previous category unless this one names its own (MOVE-4); unset outside any, it is none (`''`).
+     */
     category?: string;
     /**
      * The category this block was registered under before it moved to `category` (MOVE-1): `''`
@@ -61,7 +66,8 @@ export interface TranslateProps {
 export const Translate = defineComponent({
     name: 'Translate',
     props: {
-        category: { type: String, default: '' },
+        // Unset is "the enclosing unit's" (MOVE-4); `''` names no category of its own.
+        category: { type: String, default: undefined },
         // `null` and unset are both "did not move"; `''` is a value (MOVE-1).
         previousCategory: { type: [String, null] as PropType<string | null>, default: undefined },
         custom_id: { type: String, default: '' },
@@ -72,6 +78,8 @@ export const Translate = defineComponent({
     setup(props, { slots }) {
         const host = ref<HTMLElement | null>(null);
         const t = useT();
+        /** The category and previous category this block is under, its own or the enclosing unit's (MOVE-4). */
+        const unit = useUnitCategory(props);
         /** The request scope this render serves, on a server; null in the browser. */
         const scope = serverScope();
         let instance: VanillaTranslate | undefined;
@@ -83,12 +91,12 @@ export const Translate = defineComponent({
         let registered: string | null = null;
 
         /** The move, as the core's options take it: nothing when the block did not move (MOVE-1). */
-        const moved = () =>
-            props.previousCategory === undefined || props.previousCategory === null
-                ? {}
-                : { previousCategory: props.previousCategory };
+        const moved = () => {
+            const { previousCategory } = unit.value;
+            return previousCategory === undefined || previousCategory === null ? {} : { previousCategory };
+        };
         const options = () => ({
-            category: props.category,
+            category: unit.value.category,
             ...moved(),
             label: props.label,
             params: props.params,
@@ -101,7 +109,7 @@ export const Translate = defineComponent({
             if (!host.value || tree || unregistered) return;
             instance?.destroy();
             instance = new VanillaTranslate(host.value, {
-                category: props.category,
+                category: unit.value.category,
                 ...moved(),
                 custom_id: props.custom_id,
                 label: props.label,
@@ -142,7 +150,7 @@ export const Translate = defineComponent({
         onActivated(register);
         watch(t, register, { flush: 'post' });
         watch(
-            () => [props.category, props.previousCategory, props.custom_id, props.label],
+            () => [unit.value.category, unit.value.previousCategory, props.custom_id, props.label],
             () => (tree ? register() : create()),
             {
                 flush: 'post',
@@ -158,7 +166,7 @@ export const Translate = defineComponent({
         return () => {
             void t.value; // re-render when the catalog or locale changes
             const slot = slots.default?.() ?? [];
-            const converted = slotToBlockNodes(slot);
+            const converted = slotToBlockNodes(slot, unit.value);
             if (!converted.ok) {
                 // Raw HTML or a component alone falls back to the DOM class; beside a compiled
                 // variable, the block is served as written and registers nothing (VAR-7).

@@ -920,8 +920,8 @@ export const MUTATIONS = [
         file: 'src/components/Phrase.ts',
         edits: [
             {
-                find: '            return registerBlock(tree, {\n                category: props.category,\n',
-                replace: '            registerBlock(tree, {\n                category: props.category,\n',
+                find: '            return registerBlock(tree, {\n                category: unit.value.category,\n',
+                replace: '            registerBlock(tree, {\n                category: unit.value.category,\n',
             },
         ],
         check: vitest('src/require-credentials.test.ts'),
@@ -1194,7 +1194,7 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: "                [CATEGORY_MARKER_ATTR]: category ?? '',\n",
+                find: '              [CATEGORY_MARKER_ATTR]: own.category,\n',
                 replace: '',
             },
         ],
@@ -1437,6 +1437,72 @@ export const MUTATIONS = [
             },
         ],
         check: vitest('src/docs-icu7.test.ts'),
+    },
+    {
+        id: 'M116',
+        rules: 'MOVE-4',
+        what: 'a unit nested in a block takes nothing from it, so one naming no category stays behind when the block moves',
+        file: 'src/components/unit-category.ts',
+        edits: [
+            {
+                find: '    if (named.category !== undefined || !outer)\n',
+                replace: '    if (named.category !== undefined || !outer || true)\n',
+            },
+        ],
+        check: vitest('src/move-nested.test.ts'),
+    },
+    {
+        id: 'M117',
+        rules: 'MOVE-4, MARK-4',
+        what: "the block's tree marks a nested <Phrase> that names no category with '', so the core's walk keeps it out of the block's move",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '    const named = category !== undefined || (previous !== undefined && previous !== null);\n',
+                replace: '    const named = true;\n',
+            },
+        ],
+        check: vitest('src/block-vnodes.test.ts', 'src/move-nested.test.ts'),
+    },
+    {
+        id: 'M118',
+        rules: 'MOVE-4',
+        what: "a nested unit naming a previous category of its own but no category takes the block's previous category instead",
+        file: 'src/components/unit-category.ts',
+        edits: [
+            {
+                find: '    return { category: outer.category, previousCategory: named.previousCategory ?? outer.previousCategory };\n',
+                replace: '    return { category: outer.category, previousCategory: outer.previousCategory };\n',
+            },
+        ],
+        check: vitest('src/move-nested.test.ts'),
+    },
+    {
+        id: 'M119',
+        rules: 'MOVE-4',
+        what: 'a nested unit naming category="" is taken for one naming none, and moves with the block',
+        file: 'src/components/unit-category.ts',
+        edits: [
+            {
+                find: '    if (named.category !== undefined || !outer)\n',
+                replace: '    if (named.category || !outer)\n',
+            },
+        ],
+        check: vitest('src/move-nested.test.ts'),
+    },
+    {
+        id: 'M120',
+        rules: 'MSG-5, MSG-6',
+        what: "the init override drops messagesPreviousCategory, so a renamed messages category's templates show the server's message",
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: '            ...config,\n            writeGrant: refToWriteGrant(config.writeGrant),\n',
+                replace:
+                    '            ...config,\n            messagesPreviousCategory: undefined,\n            writeGrant: refToWriteGrant(config.writeGrant),\n',
+            },
+        ],
+        check: vitest('src/messages-previous-category.test.ts'),
     },
 ];
 

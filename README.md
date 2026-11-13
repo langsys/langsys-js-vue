@@ -407,6 +407,18 @@ const t = useT();
 
 `inCategory()` goes where the category goes in `t()`; `<Translate>` and `<Phrase>` take `previousCategory` as a prop, and so does a `<Phrase>` nested in a `<Translate>`. `previousCategory: ''` says the content had no category before; unset or `null` says it did not move. It is sent once, on the registration of the content under its new category: Langsys copies the old item's translations instead of translating it again, and retires the old item (still served to app versions that ask for it, left out of the Translation Manager and stats). Until the catalog holds the content under its new category, the old category's translation renders, and the host says so with `data-ls-previous-contentblock` (a block) or `data-ls-previous-category` (a phrase). The previous category never changes a block's id. Once the content is in the catalog under its new category the option does nothing and can be deleted.
 
+A `<Phrase>` or `<Translate>` nested in a `<Translate>` (or in a `<Phrase>`) that names no `category` of its own takes the enclosing one's category and previous category: it moves with the block. One that names its own category, `category=""` included, takes neither and moves only with its own `previousCategory`. One that names a `previousCategory` but no category takes the block's category and its own previous category. This holds through components in between, on the server and in the browser.
+
+```vue
+<Translate category="Checkout" previous-category="Header">
+    <p>Free returns for 30 days</p>
+    <Phrase>Read the <a href="/terms">terms</a></Phrase>
+    <!-- registers under Checkout, moved from Header -->
+    <Phrase category="Legal">Read the <a href="/privacy">privacy policy</a></Phrase>
+    <!-- registers under Legal, unmoved -->
+</Translate>
+```
+
 Naming a previous category moves every use of that text in that category, so move them all in the same release. Requires `langsys-js-typescript` with `inCategory()` (0.7.3 or later).
 
 ### Already-translated regions — `data-ls-resolved`

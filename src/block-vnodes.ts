@@ -11,10 +11,19 @@ import {
     type VNode,
     type VNodeArrayChildren,
 } from 'vue';
-import { isTranslationExcluded, PHRASE_MARKER_ATTR, tokenizeTree, type ParamPrimitive } from 'langsys-js-typescript';
+import {
+    // A nested host's own category and previous category, as the core reads them back (MOVE-4).
+    CATEGORY_MARKER_ATTR,
+    isTranslationExcluded,
+    PHRASE_MARKER_ATTR,
+    PREVIOUS_CATEGORY_MARKER_ATTR,
+    tokenizeTree,
+    type ParamPrimitive,
+} from 'langsys-js-typescript';
 import { NON_TRANSLATABLE_ELEMENTS, TRANSLATABLE_ATTRIBUTES, VAR_PARAM_ATTR } from 'langsys-js-typescript/pure';
 import { DontTranslate } from './components/DontTranslate.js';
 import { Phrase } from './components/Phrase.js';
+import { resolveUnitCategory, type UnitCategory } from './components/unit-category.js';
 
 /**
  * Server rendering for `<Translate>` and `<Phrase>` (SRV-1, SRV-5, MARK-1) — the Vue half.
@@ -223,20 +232,20 @@ function dontTranslateElement(vnode: VNode): VNode {
     return h(tag ?? 'span', mergeProps({ translate: 'no', 'data-ls-dont-translate': '' }, attrs), slotContent(vnode));
 }
 
-/** The core's attribute for a nested host's own category (`hostCategory`); empty is a category of its own. */
-const CATEGORY_MARKER_ATTR = 'data-ls-category';
-/** The core's attribute for a nested host's own previous category (MOVE-4, MOVE-5); empty is "none before". */
-const PREVIOUS_CATEGORY_MARKER_ATTR = 'data-ls-previous-category';
-
 /**
  * The phrase host a nested `<Phrase>` renders, built from its vnode for the enclosing block's tree:
- * phrase-marked, with its own category (the default `''` included, so the block's registration
- * records the phrase where the component does), the attributes that fall through to it, and its
- * slot's content. Its params go on the tree node. Naming its own category, it takes no move from
- * the block; a previous category of its own is marked the way the core stamps one (MOVE-4), so
- * the block's walk reads the phrase as moved, and never as an attribute of its content.
+ * phrase-marked, the attributes that fall through to it, and its slot's content. Its params go on
+ * the tree node.
+ *
+ * Its category and previous category are marked the way the core stamps them (MOVE-4), so the
+ * core's walk of the block's nested hosts reads the phrase under the category the `<Phrase>` the
+ * block re-emits resolves for itself (`resolveUnitCategory`): one naming its own category (`''`
+ * included) is marked with it, and with its own previous category if it names one; one naming no
+ * category is unmarked, and takes the block's category and previous category in the core's walk,
+ * unless it names a previous category of its own, which is marked beside the block's category.
+ * The move never becomes an attribute of the block's content.
  */
-function phraseHost(vnode: VNode): VNode {
+function phraseHost(vnode: VNode, block: UnitCategory | undefined): VNode {
     const props = (vnode.props ?? {}) as {
         tag?: string;
         category?: string;
@@ -246,18 +255,17 @@ function phraseHost(vnode: VNode): VNode {
     } & Record<string, unknown>;
     const { tag, category, params: _params, previousCategory, 'previous-category': kebab, ...attrs } = props;
     const previous = previousCategory ?? kebab;
-    return h(
-        tag ?? 'span',
-        mergeProps(
-            {
-                [PHRASE_MARKER_ATTR]: '',
-                [CATEGORY_MARKER_ATTR]: category ?? '',
-                ...(previous === undefined || previous === null ? {} : { [PREVIOUS_CATEGORY_MARKER_ATTR]: previous }),
-            },
-            attrs
-        ),
-        slotContent(vnode)
-    );
+    const named = category !== undefined || (previous !== undefined && previous !== null);
+    const own = resolveUnitCategory({ category, previousCategory: previous }, block);
+    const markers = named
+        ? {
+              [CATEGORY_MARKER_ATTR]: own.category,
+              ...(own.previousCategory === undefined || own.previousCategory === null
+                  ? {}
+                  : { [PREVIOUS_CATEGORY_MARKER_ATTR]: own.previousCategory }),
+          }
+        : {};
+    return h(tag ?? 'span', mergeProps({ [PHRASE_MARKER_ATTR]: '', ...markers }, attrs), slotContent(vnode));
 }
 
 /**
@@ -268,8 +276,11 @@ function phraseHost(vnode: VNode): VNode {
  * leaving it out would make the server's tokens differ from the ones the browser reads off the
  * rendered DOM. `v-html` is a string, not vnodes. Such a block is not server-rendered: the
  * caller serves it as source and lets the client derive its id on mount.
+ *
+ * `block` is the category and previous category of the unit the slot belongs to, which a nested
+ * `<Phrase>` that names a previous category of its own but no category is marked with (MOVE-4).
  */
-export function slotToBlockNodes(children: VNodeArrayChildren | undefined): SlotConversion {
+export function slotToBlockNodes(children: VNodeArrayChildren | undefined, block?: UnitCategory): SlotConversion {
     const elements: VNode[] = [];
     const teleports: VNode[] = [];
     let failure: UnrenderedReason | null = null;
@@ -320,7 +331,7 @@ export function slotToBlockNodes(children: VNodeArrayChildren | undefined): Slot
             if (vnode.type === Phrase) {
                 if (hasDynamicTranslatableAttribute(vnode)) dynamic({ ...at, inExcluded: true });
                 const params = vnode.props?.params as Record<string, ParamPrimitive> | undefined;
-                return element(phraseHost(vnode), vnode, { ...at, inPhrase: true }, params);
+                return element(phraseHost(vnode, block), vnode, { ...at, inPhrase: true }, params);
             }
             // A fallback does not end the walk: a compiled variable anywhere else in the slot still
             // decides that nothing registers.

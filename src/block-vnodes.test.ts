@@ -351,9 +351,27 @@ describe('a nested <Phrase> (MARK-4, VAR-2)', () => {
         expect((back[0] as VNode).type).toBe(Phrase);
     });
 
-    it('carries the default category, so the block records the phrase where the component does', () => {
-        const result = slotToBlockNodes([h(Phrase, null, () => ['By the team'])]);
-        expect(result.ok && result.nodes[0]).toMatchObject({ attrs: { 'data-ls-category': '' } });
+    it('is marked with the category the component resolves for itself (MOVE-4)', () => {
+        const block = { category: 'Checkout', previousCategory: 'Header' };
+        const attrsOf = (props: Record<string, unknown> | null) => {
+            const result = slotToBlockNodes([h(Phrase, props, () => ['By the team'])], block);
+            return result.ok ? (result.nodes[0] as { attrs?: Record<string, string> }).attrs : undefined;
+        };
+        // Naming no category, it is unmarked: the core's walk gives it the block's category and move.
+        expect(attrsOf(null)).toEqual({ 'data-ls-phrase': '' });
+        // Naming its own category, `''` included, it takes neither.
+        expect(attrsOf({ category: '' })).toEqual({ 'data-ls-phrase': '', 'data-ls-category': '' });
+        expect(attrsOf({ category: 'Own', previousCategory: 'Old' })).toEqual({
+            'data-ls-phrase': '',
+            'data-ls-category': 'Own',
+            'data-ls-previous-category': 'Old',
+        });
+        // A previous category of its own, but no category, goes with the block's category.
+        expect(attrsOf({ previousCategory: 'Old' })).toEqual({
+            'data-ls-phrase': '',
+            'data-ls-category': 'Checkout',
+            'data-ls-previous-category': 'Old',
+        });
     });
 
     it('given its children by h() as a string or an array, carries them in the block’s tree', () => {

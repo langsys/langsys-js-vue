@@ -12,13 +12,18 @@ import {
 } from 'langsys-js-typescript';
 import { UNREGISTERED_REASON, slotToBlockNodes, translatedToVNodes } from '../block-vnodes.js';
 import { serverScope, useT } from '../composables.js';
+import { useUnitCategory } from './unit-category.js';
 
 /**
  * Props for the Vue `Phrase` component. Mirrors the React/Svelte components —
  * `class` flows through native attribute fallthrough.
  */
 export interface PhraseProps {
-    /** Category the phrase registers under (disambiguation for translators). */
+    /**
+     * Category the phrase registers under (disambiguation for translators). Unset inside a
+     * `<Translate>` or `<Phrase>`, it is the enclosing unit's, and so is the previous category
+     * unless this one names its own (MOVE-4); unset outside any, it is none (`''`).
+     */
     category?: string;
     /**
      * The category this phrase was registered under before it moved to `category` (MOVE-1): `''`
@@ -64,7 +69,8 @@ export interface PhraseProps {
 export const Phrase = defineComponent({
     name: 'Phrase',
     props: {
-        category: { type: String, default: '' },
+        // Unset is "the enclosing unit's" (MOVE-4); `''` names no category of its own.
+        category: { type: String, default: undefined },
         // `null` and unset are both "did not move"; `''` is a value (MOVE-1).
         previousCategory: { type: [String, null] as PropType<string | null>, default: undefined },
         params: { type: Object as PropType<Record<string, ParamPrimitive>>, default: () => ({}) },
@@ -73,6 +79,8 @@ export const Phrase = defineComponent({
     setup(props, { slots }) {
         const host = ref<HTMLElement | null>(null);
         const t = useT();
+        /** The category and previous category this phrase is under, its own or the enclosing unit's (MOVE-4). */
+        const unit = useUnitCategory(props);
         /** The request scope this render serves, on a server; null in the browser. */
         const scope = serverScope();
         let instance: VanillaPhrase | undefined;
@@ -83,17 +91,21 @@ export const Phrase = defineComponent({
         /** The tree last registered, serialized: a re-render that changed the slot registers again. */
         let registered: string | null = null;
         /** The move, as the core's options take it: nothing when the phrase did not move (MOVE-1). */
-        const moved = () =>
-            props.previousCategory === undefined || props.previousCategory === null
-                ? {}
-                : { previousCategory: props.previousCategory };
+        const moved = () => {
+            const { previousCategory } = unit.value;
+            return previousCategory === undefined || previousCategory === null ? {} : { previousCategory };
+        };
 
         // Fallback: a slot the tree cannot express (a component, v-html) is handled by the core's
         // DOM class after mount, as before.
         const create = () => {
             if (!host.value || tree || unregistered) return;
             instance?.destroy();
-            instance = new VanillaPhrase(host.value, { category: props.category, ...moved(), params: props.params });
+            instance = new VanillaPhrase(host.value, {
+                category: unit.value.category,
+                ...moved(),
+                params: props.params,
+            });
         };
         // The tree path registers on mount, whenever `t` changes, and after an update that changed
         // the tree (see `sync`), since rendering registers nothing.
@@ -104,7 +116,7 @@ export const Phrase = defineComponent({
             registered = JSON.stringify(tree);
             // Claims the host, as a read for a compiled variable; returned for Vue's errorHandler (see <Translate>).
             return registerBlock(tree, {
-                category: props.category,
+                category: unit.value.category,
                 ...moved(),
                 params: props.params,
                 host: host.value,
@@ -125,7 +137,7 @@ export const Phrase = defineComponent({
         onActivated(register);
         watch(t, register, { flush: 'post' });
         watch(
-            () => [props.category, props.previousCategory],
+            () => [unit.value.category, unit.value.previousCategory],
             () => (tree ? register() : create())
         );
         watch(
@@ -141,7 +153,7 @@ export const Phrase = defineComponent({
         return () => {
             void t.value; // re-render when the catalog or locale changes
             const slot = slots.default?.() ?? [];
-            const converted = slotToBlockNodes(slot);
+            const converted = slotToBlockNodes(slot, unit.value);
             if (!converted.ok) {
                 // Raw HTML or a component alone falls back to the DOM class; beside a compiled
                 // variable, the block is served as written and registers nothing (VAR-7).
@@ -161,7 +173,7 @@ export const Phrase = defineComponent({
             unregistered = converted.variable;
             if (unregistered) warnUnregistered(UNREGISTERED_REASON);
             tree = phrase;
-            const opts = { category: props.category, ...moved(), params: props.params };
+            const opts = { category: unit.value.category, ...moved(), params: props.params };
             // On a server, inside the request scope, provided or entered (see <Translate>).
             const [rendered] = (
                 scope

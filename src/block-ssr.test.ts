@@ -365,3 +365,29 @@ describe('<DontTranslate> inside a block', () => {
         expect(el.textContent).toBe('Prezzi Kangen');
     });
 });
+
+describe('TOK-1: the text inside <plaintext> is never tokenized', () => {
+    const tokensOf = async (inner: string) => {
+        const scope = await createRequestScope({ locale: 'it', catalog: IT as never });
+        const html = await scope.run(() =>
+            renderToString(
+                createSSRApp({
+                    render: () =>
+                        h(Translate, { category: 'UI', tag: 'div' }, () => [h('p', 'Pricing'), h(inner, 'Built with')]),
+                })
+            )
+        );
+        return { html, tokens: Object.values(scope.seed().blocks).flatMap((b) => b.tokens) };
+    };
+
+    it('a block holding <plaintext> has no token from it, and serves its text as written', async () => {
+        const { html, tokens } = await tokensOf('plaintext');
+        expect(tokens).toEqual(['Pricing']);
+        expect(html).toContain('<plaintext>Built with</plaintext>');
+    });
+
+    it('control: the same text in a <span> is a token of the block', async () => {
+        const { tokens } = await tokensOf('span');
+        expect(tokens).toEqual(['Pricing', 'Built with']);
+    });
+});
