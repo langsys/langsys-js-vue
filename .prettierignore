@@ -14,6 +14,10 @@ yarn.lock
 # Generated
 CHANGELOG.md
 
+# Its tables are read by _dev_/check-conformance.py and _dev_/conformance-probes.py row by row;
+# padded, each row is thousands of characters and no longer greps
+CONFORMANCE.md
+
 # Vendored byte-exact from langsys-js-typescript; cited by tree id
 contract-fixture/
 test/fixtures/server-message-vectors.json

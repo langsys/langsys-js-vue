@@ -1504,6 +1504,53 @@ export const MUTATIONS = [
         ],
         check: vitest('src/messages-previous-category.test.ts'),
     },
+    {
+        id: 'M121',
+        rules: 'MOVE-1, MOVE-4',
+        what: '<Translate> hands the core no previous category, so a moved block renders source and registers as new content',
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '            return previousCategory === undefined || previousCategory === null ? {} : { previousCategory };\n',
+                replace: '            return {};\n',
+            },
+        ],
+        check: vitest('src/category-move.test.ts'),
+    },
+    {
+        id: 'M122',
+        rules: 'MOVE-1, MOVE-4',
+        what: '<Phrase> hands the core no previous category, so a moved phrase renders source and registers as new content',
+        file: 'src/components/Phrase.ts',
+        edits: [
+            {
+                find: '            return previousCategory === undefined || previousCategory === null ? {} : { previousCategory };\n',
+                replace: '            return {};\n',
+            },
+        ],
+        check: vitest('src/category-move.test.ts'),
+    },
+    {
+        id: 'M123',
+        rules: 'MOVE-1',
+        what: 'the rewritten t() reads an inCategory() ref decided at run time as params, so the phrase registers with no category',
+        file: 'src/compiler.ts',
+        edits: [{ find: " && !(a && a[Symbol.for('langsys.category')] === true)", replace: '' }],
+        check: vitest('src/category-move.test.ts'),
+    },
+    {
+        id: 'M124',
+        rules: 'MOVE-2, MOVE-4',
+        what: "a nested <Phrase>'s own previous category is not marked on the block's tree, so the core's walk reads the phrase as unmoved",
+        file: 'src/block-vnodes.ts',
+        edits: [
+            {
+                find: '                  : { [PREVIOUS_CATEGORY_MARKER_ATTR]: own.previousCategory }),\n',
+                replace: '                  : {}),\n',
+            },
+        ],
+        check: vitest('src/category-move.test.ts'),
+    },
 ];
 
 /**

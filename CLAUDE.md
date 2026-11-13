@@ -73,6 +73,8 @@ test/fixtures/snapshot-vectors.json       # vendored byte-exact from langsys-js-
 test/fixtures/laravel-inertia-failed-form-page.json # vendored byte-exact from langsys-php-laravel (MSG-12) — never edit
 contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
 _dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a temporary worktree (npm run test:mutations)
+_dev_/check-conformance.py    # CONFORMANCE.md against the spec files it is given: header blobs, one row per rule, canonical statuses and tiers, core citations, the tally (--selftest)
+_dev_/conformance-probes.py   # re-measures every absence probe in CONFORMANCE.md over src/ and the core at a commit (--check)
 example/                      # Vite playground (npm run dev) — not published
 example/nuxt/                 # Nuxt app in the documented SSR shape; built and served by npm run test:nuxt
 _dev_/nuxt-e2e.mjs            # builds example/nuxt with Nuxt against packed tarballs, serves it against the contract double
