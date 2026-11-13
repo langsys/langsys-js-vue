@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as Vue from 'vue';
 import { createApp, defineComponent, h, KeepAlive, nextTick, ref } from 'vue';
 import { compile } from '@vue/compiler-dom';
-import { until } from '../test/helpers/contract-fixture.js';
+import { until } from '../test/helpers/wait.js';
 import { LangsysApp, Translate } from './index.js';
 
 /**

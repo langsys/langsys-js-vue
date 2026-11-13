@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { STUB_API_URL, stubApi, type StubbedApi } from '../test/helpers/stub-api.js';
+import { until } from '../test/helpers/wait.js';
 import { createLocaleStore, currentlyLoadedLocale, LangsysApp, useServerMessage, type ServerMessage } from './index.js';
 
 /**
@@ -14,30 +15,26 @@ import { createLocaleStore, currentlyLoadedLocale, LangsysApp, useServerMessage,
  * part is that the option arrives as the app wrote it. Proven by what `useServerMessage()` renders
  * over a catalog holding the template only under the previous category.
  *
- * Its own file: a second `init()` in one process is a no-op.
+ * What renders is decided in-process from a catalog the case seeds, so the API's transport is a
+ * stand-in (`stub-api.ts`): nothing here asserts on what a server answered. Its own file: a second
+ * `init()` in one process is a no-op.
  */
-
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
-    keys: [{ key: 'k-public', project: 'p1', type: 'ip_write', report_discovered_content: false }],
-};
 
 const TEMPLATE = 'The {field} field is required.';
 const entry = { template: TEMPLATE, params: { field: 'email' }, message: 'The email field is required.' };
 
-let fx: ContractFixture;
+let api: StubbedApi;
 
 beforeAll(async () => {
-    fx = await startContractFixture();
-    await fx.seed(SEED);
+    api = stubApi({ writeEnabled: false });
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-public',
+        projectid: 'messages-project',
+        key: 'messages-key',
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
-        apiUrl: fx.baseUrl,
+        apiUrl: STUB_API_URL,
         messagesCategory: 'Messages',
         messagesPreviousCategory: 'Errors',
     });
@@ -47,8 +44,8 @@ beforeAll(async () => {
         'es-es'
     );
 });
-afterAll(async () => {
-    await fx.stop();
+afterAll(() => {
+    api.restore();
 });
 
 const rendered = (category?: string, shown: ServerMessage = entry) =>

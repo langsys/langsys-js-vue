@@ -1,0 +1,101 @@
+{
+    "projects": [
+        {
+            "id": "79000d00-0001-4000-8000-000000000000",
+            "title": "vue client-registers base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146001|2c9c332037579f910fb0c025e773d24a37350baf",
+                "device_id": "vue-client-registers-1"
+            }
+        },
+        {
+            "id": "79000d00-0002-4000-8000-000000000000",
+            "title": "vue client-registers base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146002|6bc37cc2aeadb686c1f85ccd29383da5ff332c53",
+                "device_id": "vue-client-registers-2"
+            }
+        },
+        {
+            "id": "79000d00-0003-4000-8000-000000000000",
+            "title": "vue client-registers base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146003|118ce0eefb08a706bee3c5d622f4b6d721bc5564",
+                "device_id": "vue-client-registers-3"
+            }
+        },
+        {
+            "id": "79000d00-0004-4000-8000-000000000000",
+            "title": "vue client-registers base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146004|82a1c92ca40902137ceab93777b522cb14fc3f5a",
+                "device_id": "vue-client-registers-4"
+            }
+        },
+        {
+            "id": "79000d00-0005-4000-8000-000000000000",
+            "title": "vue client-registers base#1 pass 4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146005|3f0837b6ae8bac3e5fdfa23e653acae4e00ab96a",
+                "device_id": "vue-client-registers-5"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000d01-0001-4000-8000-000000000000",
+            "key": "vue-client-registers-1-k-writer",
+            "project": "79000d00-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000d01-0002-4000-8000-000000000000",
+            "key": "vue-client-registers-2-k-writer",
+            "project": "79000d00-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000d01-0003-4000-8000-000000000000",
+            "key": "vue-client-registers-3-k-writer",
+            "project": "79000d00-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000d01-0004-4000-8000-000000000000",
+            "key": "vue-client-registers-4-k-writer",
+            "project": "79000d00-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000d01-0005-4000-8000-000000000000",
+            "key": "vue-client-registers-5-k-writer",
+            "project": "79000d00-0005-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

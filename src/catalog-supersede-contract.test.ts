@@ -3,6 +3,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h } from 'vue';
 import { sleep, startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import seeds from '../test/helpers/contract-seeds/catalog-supersede.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { createLocaleStore, LangsysApp, LangsysAppAPI, useCurrentLocale, useT } from './index.js';
 
 /**
@@ -11,40 +13,25 @@ import { createLocaleStore, LangsysApp, LangsysAppAPI, useCurrentLocale, useT } 
  * `useCurrentLocale()`. The core drops the superseded response, so the page shows, and the browser
  * stores, only the locale the user is on.
  *
- * The double serves every catalog; the first locale's request is held back before it is sent, so
- * the second locale's request reaches the double first. A pair whose fetch failed or was
- * superseded has nothing stored under its key: the browser keeps only catalogs that arrived. Its own file: a second `init()` in one
- * process is a no-op.
+ * The API on an SDK test clone (spec CONF-2) serves every catalog; the first locale's request is
+ * held back before it is sent, so the second locale's request reaches the API first, and each case
+ * reads the page only once the overtaken response has arrived. A pair whose fetch failed or was
+ * superseded has nothing stored under its key: the browser keeps only catalogs that arrived. Its
+ * own file: a second `init()` in one process is a no-op.
  */
 
-const SEED = {
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en-us',
-            target_locales: ['fr-fr', 'de-de', 'it-it', 'pt-pt'],
-            website_url: 'https://site.local',
-            phrases: [
-                {
-                    category: 'UI',
-                    phrase: 'Hello',
-                    translations: { 'fr-fr': 'Bonjour', 'de-de': 'Hallo', 'it-it': 'Ciao', 'pt-pt': 'Olá' },
-                },
-            ],
-        },
-    ],
-    keys: [{ key: 'k-reader', project: 'p1', type: 'read' }],
-};
-
 let fx: ContractFixture;
+let w: World;
 const store = createLocaleStore('en-us');
 const held: Record<string, number> = {};
+/** The locales whose catalog response has arrived, answered or failed. */
+const landed = new Set<string>();
 let el: HTMLElement;
 
 /** What the page shows: the phrase, then the loaded locale. */
 const shown = () => el.textContent ?? '';
 /** What the browser stores under `locale`'s key, or null when it stores nothing. */
-const stored = (locale: string) => window.localStorage.getItem(`langsys:translations:p1:${locale}`);
+const stored = (locale: string) => window.localStorage.getItem(`langsys:translations:${w.project()}:${locale}`);
 /** Every catalog the browser has persisted, as one string. */
 const persisted = () =>
     Object.keys(window.localStorage)
@@ -54,17 +41,22 @@ const persisted = () =>
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     const send = LangsysAppAPI.getTranslations.bind(LangsysAppAPI);
     vi.spyOn(LangsysAppAPI, 'getTranslations').mockImplementation(async (locale: string) => {
         if (held[locale]) await sleep(held[locale]);
-        return send(locale);
+        try {
+            return await send(locale);
+        } finally {
+            landed.add(locale);
+        }
     });
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-reader',
+        projectid: w.project(),
+        key: w.key('k-reader'),
         UserLocaleStore: store,
         baseLocale: 'en-us',
         apiUrl: fx.baseUrl,
@@ -80,20 +72,21 @@ beforeAll(async () => {
             },
         })
     ).mount(el);
-    await until(() => shown() === 'Hello|en-us');
+    await until(() => shown() === 'Hello|en-us', 15_000, 50);
 });
 afterAll(async () => {
-    await fx.stop();
+    await fx?.stop();
 });
 
 describe('a switch that overtakes an in-flight catalog fetch', () => {
     it('slow fr overtaken by a de that fails fast: source text under de, nothing stored', async () => {
-        await fx.seed({ ...SEED, faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] });
-        held['fr-fr'] = 400;
+        await fx.update(w, { faults: [{ method: 'GET', path: '/translations', times: 1, status: 500 }] });
+        held['fr-fr'] = 1_000;
         store.set('fr-fr');
         await sleep(30);
         store.set('de-de');
-        await sleep(1_200); // fr has landed by now
+        await until(() => landed.has('fr-fr') && landed.has('de-de'), 15_000, 50);
+        await sleep(300);
 
         expect(shown().split('|')[0]).toBe('Hello');
         expect(shown()).not.toContain('Bonjour');
@@ -104,12 +97,13 @@ describe('a switch that overtakes an in-flight catalog fetch', () => {
     });
 
     it('slow it overtaken by a pt that succeeds: Portuguese, and only Portuguese stored', async () => {
-        held['it-it'] = 400;
+        held['it-it'] = 1_000;
         store.set('it-it');
         await sleep(30);
         store.set('pt-pt');
-        await sleep(1_200); // it has landed by now
-        await until(() => shown() === 'Olá|pt-pt');
+        await until(() => landed.has('it-it') && landed.has('pt-pt'), 15_000, 50);
+        await until(() => shown() === 'Olá|pt-pt', 15_000, 50);
+        await sleep(300);
 
         expect(shown()).toBe('Olá|pt-pt');
         expect(stored('pt-pt')).toContain('Olá');

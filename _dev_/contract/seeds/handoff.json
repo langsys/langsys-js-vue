@@ -1,0 +1,101 @@
+{
+    "projects": [
+        {
+            "id": "79000600-0001-4000-8000-000000000000",
+            "title": "vue handoff base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "142501|e957c985d7fc5d08eb8065f0f2b6503d55e267ea",
+                "device_id": "vue-handoff-1"
+            }
+        },
+        {
+            "id": "79000600-0002-4000-8000-000000000000",
+            "title": "vue handoff base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "142502|9dc32f64f0e76250a9e7d2c36ce2d866e2227967",
+                "device_id": "vue-handoff-2"
+            }
+        },
+        {
+            "id": "79000600-0003-4000-8000-000000000000",
+            "title": "vue handoff base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "142503|b63568cbf90c9bc8b1dbf3cd71ec8492d34aebbb",
+                "device_id": "vue-handoff-3"
+            }
+        },
+        {
+            "id": "79000600-0004-4000-8000-000000000000",
+            "title": "vue handoff base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "142504|052ea0750472d7035a2d85cd0200a73ea47682f0",
+                "device_id": "vue-handoff-4"
+            }
+        },
+        {
+            "id": "79000600-0005-4000-8000-000000000000",
+            "title": "vue handoff base#1 pass 4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "142505|8f50795ff732e1654311aa96aeae92bc42428aa5",
+                "device_id": "vue-handoff-5"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000601-0001-4000-8000-000000000000",
+            "key": "vue-handoff-1-k-writer",
+            "project": "79000600-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000601-0002-4000-8000-000000000000",
+            "key": "vue-handoff-2-k-writer",
+            "project": "79000600-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000601-0003-4000-8000-000000000000",
+            "key": "vue-handoff-3-k-writer",
+            "project": "79000600-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000601-0004-4000-8000-000000000000",
+            "key": "vue-handoff-4-k-writer",
+            "project": "79000600-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000601-0005-4000-8000-000000000000",
+            "key": "vue-handoff-5-k-writer",
+            "project": "79000600-0005-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

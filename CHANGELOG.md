@@ -48,6 +48,8 @@
 
 ### Changed
 
+- **The contract tests run against a real Langsys API.** `npm run test:contract` runs every `src/*-contract.test.ts` against an SDK test clone, reached through the base SDK's contract forwarder (`contract-fixture/`), and reads back what the API stored: its catalog, each block's stored content, and the hints it accepted. Each file's projects are its own, declared in `test/helpers/contract-seeds/` and rendered to the seed files in `_dev_/contract/seeds/` the clone is built from. `npm test` runs the unit suites only, with no API and no listening socket. `npm run fixture` starts the forwarder for the playground, and `npm run test:nuxt` serves the Nuxt app against the clone. The mutation runner runs each mutation's unit suites, and with `--contract --pass N` the mutations only a contract suite catches.
+
 - **`<Translate>` stamps its explicit `custom_id` with the base SDK's exported `CONTENT_BLOCK_MARKER_ATTR`** instead of a local copy of the attribute name.
 
 - **`LangsysApp` is now a `Proxy` over the base SDK singleton rather than a hand-written wrapper class.** It forwards every core member **by reference** and overrides exactly two — `init` and `setWriteGrant`, the only two that adapt Vue shapes. Non-breaking: `LangsysApp.getCountries()` and every other call keep working, and now resolve to the core's own function rather than a copy of it.

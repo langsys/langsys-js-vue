@@ -3,7 +3,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { anyBlock, startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import seeds from '../test/helpers/contract-seeds/handoff.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { createLocaleStore, currentlyLoadedLocale, LangsysApp, LangsysAppAPI, Translate } from './index.js';
 import { createRequestScope, installRequestScopes } from './server.js';
 
@@ -13,17 +15,15 @@ import { createRequestScope, installRequestScopes } from './server.js';
  *
  * A write-enabled session renders with `ssrTokenStrategy: 'server'`, so a scope sends the blocks it
  * rendered when it closes and marks them `collected` in its seed. The client then hydrates the
- * served HTML; handed the whole seed, it never sends those blocks again. Sends are counted at the
- * transport seam, since the double stores registrations idempotently and could not show a
- * duplicate. Its own file: a second `init()` in one process is a no-op.
+ * served HTML; handed the whole seed, it never sends those blocks again. That the server's scope
+ * sent the block is read from the API on an SDK test clone (spec CONF-2), which holds it; that the
+ * client never sends it again is a clause about what the SDK sends, so it is counted at the
+ * transport seam, since the API stores registrations idempotently and could not show a duplicate.
+ * Its own file: a second `init()` in one process is a no-op.
  */
 
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
-    keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
-};
-
 let fx: ContractFixture;
+let w: World;
 const cleanups: Array<() => void> = [];
 
 const Page = (text: string) =>
@@ -42,7 +42,7 @@ async function serveThenHydrate(
     const seed = scope.seed();
     await scope.close();
     const blockId = Object.keys(seed.blocks)[0]!;
-    const serverStored = (await fx.state()).projects.p1.blocks.some((b) => b.custom_id === blockId);
+    const serverStored = anyBlock(await fx.held(w.key('k-writer'), w.project(), 'es-es')).includes(blockId);
 
     const sent: string[] = [];
     const original = LangsysAppAPI.createTranslatableItems.bind(LangsysAppAPI);
@@ -70,18 +70,19 @@ async function serveThenHydrate(
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-writer',
+        projectid: w.project(),
+        key: w.key('k-writer'),
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
         ssrTokenStrategy: 'server',
     });
-    await until(() => currentlyLoadedLocale.get() === 'en');
+    await until(() => currentlyLoadedLocale.get() === 'en', 15_000, 50);
     installRequestScopes();
     vi.useFakeTimers({
         toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
@@ -90,7 +91,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
     vi.useRealTimers();
-    await fx.stop();
+    await fx?.stop();
 });
 afterEach(() => {
     while (cleanups.length) cleanups.pop()!();

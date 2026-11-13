@@ -1,45 +1,34 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { startContractFixture, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { anyPhrase, startContractFixture, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import seeds from '../test/helpers/contract-seeds/ssr-credentials.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { createLocaleStore, LangsysApp, Translate, useT } from './index.js';
 import { createRequestScope, installRequestScopes, provideRequestScope, renderInRequestScope } from './server.js';
 
 /**
- * SRV-2, credentials, through this binding's two server paths, against the contract double, in a
- * process with no `window`: a request scope carries its own project id and API key, and its render
+ * SRV-2, credentials, through this binding's two server paths, against the API on an SDK test
+ * clone (spec CONF-2), in a process with no `window`: a request scope carries its own project id and API key, and its render
  * sends under them. Two scopes in one process never share a credential however they interleave,
  * and a scope given none sends under the module-wide ones. The binding passes the scope's options
  * through unchanged, to `renderInRequestScope` and to the `createRequestScope` the Nuxt path
  * provides.
  *
  * Which key a request carried is a transport fact, read at the fetch seam; what each project stored
- * is read from the double, which refuses a key for another project. Its own file: a second `init()`
- * in one process is a no-op.
+ * is read from the API, which refuses a key for another project: each project's catalog with its
+ * own key, and its blocks' content as its owner reads them. Its own file: a second `init()` in one
+ * process is a no-op.
  */
 
-const PROJECT = (id: string) => ({
-    id,
-    base_locale: 'en',
-    target_locales: ['de', 'it'],
-    website_url: `https://${id}.local`,
-    phrases: [{ category: 'UI', phrase: 'Hello', translations: { de: `Hallo ${id}`, it: `Ciao ${id}` } }],
-});
-const SEED = {
-    projects: [PROJECT('zero'), PROJECT('one'), PROJECT('two')],
-    keys: [
-        { key: 'key-zero', project: 'zero', type: 'write' },
-        { key: 'key-one', project: 'one', type: 'write' },
-        { key: 'key-two', project: 'two', type: 'write' },
-    ],
-};
-const ONE = { projectid: 'one', key: 'key-one' };
-const TWO = { projectid: 'two', key: 'key-two' };
-
 let fx: ContractFixture;
+let w: World;
+type Role = 'zero' | 'one' | 'two';
+const credentials = (role: Role) => ({ projectid: w.project(role), key: w.key(`key-${role}`) });
 const sent: Array<{ locale: string | null; key: string | null; body: string }> = [];
-const phrasesOf = async (project: string) => (await fx.state()).projects[project]!.phrases.map((p) => p.phrase);
-const blocksOf = async (project: string) => (await fx.state()).projects[project]!.blocks.map((b) => b.content ?? '');
+const phrasesOf = async (role: Role) => anyPhrase(await fx.held(w.key(`key-${role}`), w.project(role), 'de')).sort();
+const blocksOf = async (role: Role) =>
+    (await fx.storedBlocks(w, w.key(`key-${role}`), 'de', role)).map((b) => b.content ?? '');
 /** The requests one render made, told apart by its locale or by what it sent. */
 const ofRender = (locale: string, text: string) =>
     sent.filter((r) => r.locale === locale || r.body.includes(text) || r.body.includes(`"${locale}"`));
@@ -61,12 +50,13 @@ const Page = (miss: string) =>
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'zero',
-        key: 'key-zero',
+        projectid: w.project('zero'),
+        key: w.key('key-zero'),
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
@@ -87,17 +77,17 @@ beforeAll(async () => {
 });
 afterAll(async () => {
     vi.restoreAllMocks();
-    await fx.stop();
+    await fx?.stop();
 });
 
 describe('SRV-2: a server render sends under its own scope’s credentials', () => {
     it('two concurrent renders, one per server path, each with its own project id and key, never share a credential', async () => {
         sent.length = 0;
-        const plain = renderInRequestScope({ locale: 'de', credentials: ONE }, () =>
+        const plain = renderInRequestScope({ locale: 'de', credentials: credentials('one') }, () =>
             renderToString(createSSRApp(Page('Only in one')))
         );
         const nuxt = (async () => {
-            const scope = await createRequestScope({ locale: 'it', credentials: TWO });
+            const scope = await createRequestScope({ locale: 'it', credentials: credentials('two') });
             const app = createSSRApp(Page('Only in two'));
             provideRequestScope(app, scope); // the Nuxt path
             return { result: await renderToString(app), scope };
@@ -111,8 +101,8 @@ describe('SRV-2: a server render sends under its own scope’s credentials', () 
         const ofTwo = ofRender('it', 'Only in two');
         expect(ofOne.length, 'control: the first render made requests').toBeGreaterThan(0);
         expect(ofTwo.length, 'control: the second render made requests').toBeGreaterThan(0);
-        expect(keysOf(ofOne)).toEqual(['key-one']);
-        expect(keysOf(ofTwo)).toEqual(['key-two']);
+        expect(keysOf(ofOne)).toEqual([w.key('key-one')]);
+        expect(keysOf(ofTwo)).toEqual([w.key('key-two')]);
         expect(sent.length, JSON.stringify(sent)).toBe(ofOne.length + ofTwo.length);
 
         expect(await phrasesOf('one')).toEqual(['Hello', 'Only in one']);
@@ -129,7 +119,7 @@ describe('SRV-2: a server render sends under its own scope’s credentials', () 
         );
         expect(result).toContain('<h1>Hallo zero</h1>');
         expect(await scope.close()).toEqual({ status: true });
-        expect(keysOf(sent)).toEqual(['key-zero']);
+        expect(keysOf(sent)).toEqual([w.key('key-zero')]);
         expect(await phrasesOf('zero')).toEqual(['Hello', 'Only in zero']);
     });
 });

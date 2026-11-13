@@ -3,33 +3,36 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, KeepAlive, nextTick, ref } from 'vue';
 import { startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { everyText } from '../test/helpers/contract-held.js';
+import seeds from '../test/helpers/contract-seeds/block-updates.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { createLocaleStore, currentlyLoadedLocale, LangsysApp, Phrase, Translate } from './index.js';
 
 /**
  * A `<Translate>` or `<Phrase>` whose slot changes after mount registers what it shows now, on
  * either path: a static slot whose content changes stays on the tree path, and a slot that turns
  * into a component moves to the core's DOM class. A block `<KeepAlive>` holds out of the page
- * registers nothing, and registers what it shows when it is back. Against the contract double with a write key,
- * reading what it stored; the DOM class registers once its settle window has closed, so each check
- * polls the double rather than reading one flush. Its own file: a second `init()` in one process
- * is a no-op.
+ * registers nothing, and registers what it shows when it is back. Against the API on an SDK test
+ * clone (spec CONF-2) with a write key, reading what it stored: its catalog, and each block's
+ * content as the project's owner reads it. The DOM class registers once its settle window has
+ * closed, so each check polls the catalog rather than reading one flush. Its own file: a second
+ * `init()` in one process is a no-op.
  */
 
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['it'], website_url: 'https://site.local' }],
-    keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
-};
-
 let fx: ContractFixture;
+let w: World;
 const unmounts: Array<() => void> = [];
-const stored = async () => {
-    const p1 = (await fx.state()).projects.p1;
-    return [...p1.phrases.map((p) => p.phrase), ...p1.blocks.map((b) => b.content ?? '')].join('\n');
-};
-/** Let registrations flush, then wait until the double has stored `text`. */
+const held = () => fx.held(w.key('k-writer'), w.project(), 'it');
+/** Every stored text: the catalog's phrases, standalone and in blocks, and each block's content. */
+const stored = async () =>
+    [
+        ...everyText(await held()),
+        ...(await fx.storedBlocks(w, w.key('k-writer'), 'it')).map((b) => b.content ?? ''),
+    ].join('\n');
+/** Let registrations flush, then wait until the API holds `text`. */
 async function eventuallyStored(text: string): Promise<string> {
     await vi.advanceTimersByTimeAsync(3_000);
-    await until(async () => (await stored()).includes(text), 15_000);
+    await until(async () => everyText(await held()).includes(text));
     return stored();
 }
 function mount(render: () => ReturnType<typeof h>) {
@@ -46,12 +49,13 @@ function mount(render: () => ReturnType<typeof h>) {
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-writer',
+        projectid: w.project(),
+        key: w.key('k-writer'),
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
@@ -65,7 +69,7 @@ beforeAll(async () => {
 afterAll(async () => {
     vi.useRealTimers();
     while (unmounts.length) unmounts.pop()!();
-    await fx.stop();
+    await fx?.stop();
 });
 
 describe('a slot that changes after mount registers what it shows', () => {

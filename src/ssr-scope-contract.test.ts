@@ -1,36 +1,26 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createSSRApp, defineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import { startContractFixture, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { anyPhrase, startContractFixture, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import seeds from '../test/helpers/contract-seeds/ssr-scope.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { createLocaleStore, LangsysApp, useT } from './index.js';
 import { createRequestScope, installRequestScopes, provideRequestScope } from './server.js';
 
 /**
- * SRV-1 and SRV-3 through this binding's wiring, against the contract double, in a process with
- * no `window`, as a server runs.
+ * SRV-1 and SRV-3 through this binding's wiring, against the API on an SDK test clone (spec
+ * CONF-2), in a process with no `window`, as a server runs.
  *
  * The session may write and renders with `ssrTokenStrategy: 'server'`, so a scope's misses are
- * sent when it closes after the response, and the double stores them. Each request's scope
- * fetches its own locale's catalog from the double.
+ * sent when it closes after the response, and the API stores them, read back through its catalog.
+ * Each request's scope fetches its own locale's catalog from the API.
  *
  * Its own file: a second `init()` in one process is a no-op.
  */
 
-const SEED = {
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en',
-            target_locales: ['it', 'de'],
-            website_url: 'https://site.local',
-            phrases: [{ category: 'UI', phrase: 'Pricing', translations: { it: 'Prezzi', de: 'Preise' } }],
-        },
-    ],
-    keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
-};
-
 let fx: ContractFixture;
-const stored = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+let w: World;
+const stored = async () => anyPhrase(await fx.held(w.key('k-writer'), w.project(), 'it'));
 
 const Page = (missing: string) =>
     defineComponent({
@@ -43,12 +33,13 @@ const Page = (missing: string) =>
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-writer',
+        projectid: w.project(),
+        key: w.key('k-writer'),
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
@@ -57,10 +48,10 @@ beforeAll(async () => {
     installRequestScopes();
 });
 afterAll(async () => {
-    await fx.stop();
+    await fx?.stop();
 });
 
-describe('SRV-1 / SRV-3 — a request scope, wired through this binding, against the double', () => {
+describe('SRV-1 / SRV-3 — a request scope, wired through this binding, against the API', () => {
     it('SRV-1: each request serves its own locale from the catalog its scope fetched', async () => {
         const it = await createRequestScope({ locale: 'it' });
         const de = await createRequestScope({ locale: 'de' });
@@ -75,7 +66,7 @@ describe('SRV-1 / SRV-3 — a request scope, wired through this binding, against
         await Promise.all([it.close(), de.close()]);
     });
 
-    it("SRV-3: a render's misses are sent when its scope closes after the response, and the double stores them", async () => {
+    it("SRV-3: a render's misses are sent when its scope closes after the response, and the API stores them", async () => {
         const scope = await createRequestScope({ locale: 'it' });
         const app = createSSRApp(Page('Missed on the server C'));
         provideRequestScope(app, scope); // the Nuxt path

@@ -4,32 +4,45 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import * as Vue from 'vue';
 import { compile } from '@vue/compiler-dom';
 import { logger } from 'langsys-js-typescript';
-import { startContractFixture, sleep, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import {
+    anyPhrase,
+    startContractFixture,
+    sleep,
+    until,
+    type ContractFixture,
+} from '../test/helpers/contract-fixture.js';
+import { phrasesIn } from '../test/helpers/contract-held.js';
+import seeds from '../test/helpers/contract-seeds/variables.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { UNREGISTERED_REASON } from './block-vnodes.js';
 import { langsysTransform } from './compiler.js';
 import { createLocaleStore, currentlyLoadedLocale, DontTranslate, LangsysApp, Phrase, Translate } from './index.js';
 
 /**
- * VAR-1, VAR-6 and VAR-7 against the contract double: the same component rendered for two users.
+ * VAR-1, VAR-6 and VAR-7 against the API on an SDK test clone (spec CONF-2): the same component
+ * rendered for two users.
  *
- * The session may write, and the double stores any phrase it is sent, so an absence is evidence.
- * Each case waits for a static sibling to be stored before reading, so a flush has happened.
- * Its own file: a second `init()` in one process is a no-op.
+ * The session may write, and the API stores any phrase it is sent, so an absence is evidence.
+ * What it holds is read back through its catalog, and a block's content as the project's owner
+ * reads it. Each case waits for a static sibling to be stored before reading, so a flush has
+ * happened. Its own file: a second `init()` in one process is a no-op.
  */
 
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
-    keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
-};
-
 let fx: ContractFixture;
+let w: World;
 const unmounts: Array<() => void> = [];
-const phrases = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
+/** The catalog the API serves the project's key: what it accepted. */
+const held = () => fx.held(w.key('k-writer'), w.project(), 'es-es');
+const phrases = async () => anyPhrase(await held());
+/** The blocks the API holds, each with the content it stored. */
+const blocks = () => fx.storedBlocks(w, w.key('k-writer'), 'es-es');
 /** Every stored text: phrases, and block content. */
-const storedText = async () => {
-    const p1 = (await fx.state()).projects.p1;
-    return [...p1.phrases.map((p) => p.phrase), ...p1.blocks.map((b) => b.content ?? '')].join('\n');
-};
+const storedText = async () => [...(await phrases()), ...(await blocks()).map((b) => b.content ?? '')].join('\n');
+/** The standalone phrases, and the content of the blocks, the API holds under `category`. */
+const inCategory = async (category: string) => ({
+    phrases: phrasesIn(await held(), category),
+    blocks: (await blocks()).filter((b) => b.category === category).map((b) => b.content),
+});
 
 /** Mount the template, compiled for real, for one user. */
 function mountFor(template: string, user: string, transform: boolean, cms = ''): HTMLElement {
@@ -58,18 +71,19 @@ function mountFor(template: string, user: string, transform: boolean, cms = ''):
 async function flushedBeside(control: string): Promise<string[]> {
     await vi.advanceTimersByTimeAsync(3_000);
     await until(async () => (await phrases()).includes(control));
-    await sleep(200);
+    await sleep(2_000);
     return phrases();
 }
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-writer',
+        projectid: w.project(),
+        key: w.key('k-writer'),
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
@@ -83,7 +97,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
     vi.useRealTimers();
-    await fx.stop();
+    await fx?.stop();
 });
 afterEach(() => {
     while (unmounts.length) unmounts.pop()!();
@@ -144,13 +158,6 @@ describe('a value inside an excluded element, for two users', () => {
     const SHAPES = {
         a: '<DontTranslate>{{ user.email }}</DontTranslate>',
         b: '<span translate="no">{{ user.email }}</span>',
-    };
-    const inCategory = async (category: string) => {
-        const p1 = (await fx.state()).projects.p1;
-        return {
-            phrases: p1.phrases.filter((x) => x.category === category).map((x) => x.phrase),
-            blocks: p1.blocks.filter((x) => x.category === category).map((x) => x.content),
-        };
     };
     const twoUsers = (hosts: (shape: string, category: string) => string, prefix: string, control: string) => {
         const tpl = `<div>${Object.entries(SHAPES)
@@ -222,14 +229,6 @@ describe('a value inside an excluded element, for two users', () => {
  * the host's shell, and the phrase keys as it does standing alone, each with its own values.
  */
 describe('a <Phrase> nested in a <Translate>, both holding a value', () => {
-    const inCategory = async (category: string) => {
-        const p1 = (await fx.state()).projects.p1;
-        return {
-            phrases: p1.phrases.filter((x) => x.category === category).map((x) => x.phrase),
-            blocks: p1.blocks.filter((x) => x.category === category).map((x) => x.content),
-        };
-    };
-
     it('with the transform, the block registers its text around the phrase, which keys as it does alone', async () => {
         const tpl =
             '<div><Translate category="NB"><p>Hi {{ user.firstName }}</p><p>Welcome back</p><Phrase category="NB">By {{ owner.name }}</Phrase></Translate>' +

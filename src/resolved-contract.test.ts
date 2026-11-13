@@ -2,7 +2,16 @@
 // @vitest-environment-options {"url": "https://site.local/"}
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, type VNode } from 'vue';
-import { startContractFixture, sleep, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import {
+    anyBlock,
+    startContractFixture,
+    sleep,
+    until,
+    type ContractFixture,
+} from '../test/helpers/contract-fixture.js';
+import { everyText } from '../test/helpers/contract-held.js';
+import seeds from '../test/helpers/contract-seeds/resolved.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import {
     createLocaleStore,
     currentlyLoadedLocale,
@@ -14,40 +23,26 @@ import {
 } from './index.js';
 
 /**
- * GATE-10 against the contract double: text inside a `data-ls-resolved` subtree is not source,
+ * GATE-10 against the API on an SDK test clone (spec CONF-2): text inside a `data-ls-resolved` subtree is not source,
  * so nothing inside it is registered. This binding's part is handing the core the real DOM
  * host of every `<Translate>` and `<Phrase>`, so the core's ancestor walk reaches a marker the
  * app put anywhere above the component.
  *
- * The session may write and the double accepts registration from it, so an absence is
- * evidence: the double would have stored the phrase. Every case pairs the marked phrase with
+ * The session may write and the API accepts registration from it, so an absence is evidence: the
+ * API would have stored the phrase. What it holds is read back through its catalog. Every case pairs the marked phrase with
  * an unmarked sibling rendered in the same tree, and waits for the sibling to be stored before
  * asserting the absence, so "nothing stored yet" cannot pass as "suppressed".
  */
 
-const SEED = {
-    projects: [
-        {
-            id: 'p1',
-            base_locale: 'en',
-            target_locales: ['es-es'],
-            website_url: 'https://site.local',
-            phrases: [
-                { category: 'UI', phrase: 'Known phrase', translations: { 'es-es': 'Frase conocida' } },
-                { category: 'UI', phrase: 'Hello {m0o}world{m0c}', translations: { 'es-es': 'Hola {m0o}mundo{m0c}' } },
-            ],
-        },
-    ],
-    keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
-};
-
 let fx: ContractFixture;
+let w: World;
 const unmounts: Array<() => void> = [];
 
-const phrases = async () => (await fx.state()).projects.p1.phrases.map((p) => p.phrase);
-const blockContents = async () => (await fx.state()).projects.p1.blocks.map((b) => b.content ?? '');
-const stored = async (text: string) =>
-    (await phrases()).includes(text) || (await blockContents()).some((c) => c.includes(text));
+/** The catalog the API serves the project's key: what it accepted. */
+const held = () => fx.held(w.key('k-writer'), w.project(), 'es-es');
+/** Whether the API holds `text`, as a phrase or as a phrase of a block. */
+const stored = async (text: string) => everyText(await held()).includes(text);
+const blockIds = async () => anyBlock(await held());
 
 function mount(render: () => VNode): HTMLElement {
     const el = document.createElement('div');
@@ -65,7 +60,7 @@ function mount(render: () => VNode): HTMLElement {
 async function storedBeside(control: string, text: string): Promise<boolean> {
     await vi.advanceTimersByTimeAsync(3_000);
     await until(() => stored(control));
-    await sleep(200);
+    await sleep(2_000);
     return stored(text);
 }
 
@@ -82,12 +77,13 @@ const UsesT = (text: string) =>
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-writer',
+        projectid: w.project(),
+        key: w.key('k-writer'),
         UserLocaleStore: createLocaleStore('es-es'),
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
@@ -100,7 +96,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
     vi.useRealTimers();
-    await fx.stop();
+    await fx?.stop();
 });
 afterEach(() => {
     while (unmounts.length) unmounts.pop()!();
@@ -138,7 +134,7 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
      * The marker the core sets: a `<Phrase>` rendered from the catalog carries `data-ls-resolved`
      * on its host, so no DOM reader files its text as source. Inside a `<Translate>` that falls
      * back (a component in its slot), the phrase claims its host when it registers, and the
-     * double stores no translation.
+     * API stores no translation as source.
      */
     it('<Phrase> rendered from the catalog, inside a <Translate> that falls back: its host is marked, and the translation is never stored', async () => {
         const Icon = defineComponent({ render: () => h('i', '*') });
@@ -151,7 +147,7 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
                 phrase('Source phrase H'),
             ])
         );
-        await until(() => el.querySelector('[data-ls-phrase]')?.textContent === 'Hola mundo');
+        await until(() => el.querySelector('[data-ls-phrase]')?.textContent === 'Hola mundo', 15_000, 50);
         expect(el.querySelector('[data-ls-phrase]')?.getAttribute('data-ls-resolved')).toBe('es-es');
         expect(await storedBeside('Source phrase H', 'Hola {m0o}mundo{m0c}')).toBe(false);
     });
@@ -175,12 +171,12 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
         );
         await vi.advanceTimersByTimeAsync(3_000);
         await until(() => stored('Opted out E'));
-        await sleep(200);
+        await sleep(2_000);
         expect(await stored('Still resolved E')).toBe(false);
     });
 
     it('SRV-5: a depth-3 nested block sends each of its blocks exactly once', async () => {
-        // Counted at the transport seam: the double stores registrations idempotently, so
+        // Counted at the transport seam: the API stores registrations idempotently, so
         // accepted state cannot show a duplicate. Each item the SDK sends is tallied by id. The
         // core shares a block's unanswered request, so the count holds even when an enclosing DOM
         // class takes the block over; block-ssr.test.ts pins whose values the block keeps.
@@ -205,8 +201,8 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
                 ])
             );
             await vi.advanceTimersByTimeAsync(3_000);
-            await until(async () => (await fx.state()).projects.p1.blocks.some((b) => b.custom_id === 'depth-3'));
-            await sleep(300);
+            await until(async () => (await blockIds()).includes('depth-3'));
+            await sleep(2_000);
             await vi.advanceTimersByTimeAsync(3_000);
             const counts = sent.reduce<Record<string, number>>((c, id) => ((c[id] = (c[id] ?? 0) + 1), c), {});
             expect(counts['depth-3']).toBe(1);
@@ -227,7 +223,7 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
             ])
         );
         await vi.advanceTimersByTimeAsync(3_000);
-        await until(async () => (await fx.state()).projects.p1.blocks.some((b) => b.custom_id === 'app-block-M'));
+        await until(async () => (await blockIds()).includes('app-block-M'));
     });
 
     it('MARK-3, inside a resolved region: a stamped block registers nothing under its id', async () => {
@@ -243,7 +239,7 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
             ])
         );
         await storedBeside('Source single N', 'N one');
-        expect((await fx.state()).projects.p1.blocks.map((b) => b.custom_id)).not.toContain('resolved-block-N');
+        expect(await blockIds()).not.toContain('resolved-block-N');
     });
 
     it('identity and translation are untouched: a stamped block keeps its id and a known phrase still translates', async () => {
@@ -252,7 +248,7 @@ describe('GATE-10 — a resolved subtree registers nothing, through every wrappe
                 h(Translate, { category: 'UI', custom_id: 'resolved-block-f' }, () => [h('p', 'Known phrase')]),
             ])
         );
-        await until(() => el.querySelector('translate')?.textContent === 'Frase conocida');
+        await until(() => el.querySelector('translate')?.textContent === 'Frase conocida', 15_000, 50);
         expect(el.querySelector('translate')?.getAttribute('data-ls-contentblock')).toBe('resolved-block-f');
     });
 

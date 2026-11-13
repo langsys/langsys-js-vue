@@ -1,0 +1,82 @@
+{
+    "projects": [
+        {
+            "id": "79000300-0001-4000-8000-000000000000",
+            "title": "vue switch-during-registration base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "141001|81e0bd61641552c7b62f2f2ba9cc45a102f45122",
+                "device_id": "vue-switch-during-registration-1"
+            }
+        },
+        {
+            "id": "79000300-0002-4000-8000-000000000000",
+            "title": "vue switch-during-registration base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "141002|fd7f2a9e504e3727756c32a3bc0aa526f0d0969c",
+                "device_id": "vue-switch-during-registration-2"
+            }
+        },
+        {
+            "id": "79000300-0003-4000-8000-000000000000",
+            "title": "vue switch-during-registration base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "141003|d4496de895e9dd83a3d5636b27b5eea52eea0e53",
+                "device_id": "vue-switch-during-registration-3"
+            }
+        },
+        {
+            "id": "79000300-0004-4000-8000-000000000000",
+            "title": "vue switch-during-registration base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "141004|3bc38f8e7fd2fa1aaec8cbe59fe9af34cb4589b2",
+                "device_id": "vue-switch-during-registration-4"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000301-0001-4000-8000-000000000000",
+            "key": "vue-switch-during-registration-1-k-writer",
+            "project": "79000300-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000301-0002-4000-8000-000000000000",
+            "key": "vue-switch-during-registration-2-k-writer",
+            "project": "79000300-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000301-0003-4000-8000-000000000000",
+            "key": "vue-switch-during-registration-3-k-writer",
+            "project": "79000300-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000301-0004-4000-8000-000000000000",
+            "key": "vue-switch-during-registration-4-k-writer",
+            "project": "79000300-0004-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

@@ -3,23 +3,27 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h } from 'vue';
 import { sleep, startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { everyText } from '../test/helpers/contract-held.js';
+import seeds from '../test/helpers/contract-seeds/switch-during-registration.js';
+import type { World } from '../test/helpers/contract-worlds.js';
 import { createLocaleStore, currentlyLoadedLocale, LangsysApp, Phrase, Translate, useT } from './index.js';
 
 /**
  * A write session on the base locale registers what it shows, and the visitor switches language,
- * through the store handed to `init()`, while those registrations are unanswered: each request
- * answers only after 800ms, as on a slow network. By then a translator has translated the
- * content, so the switched catalog arrives with it. A registration answered afterwards marks only
- * what that catalog does not already hold, so `<Translate>`, `<Phrase>` and `useT()` show the
- * translation. Its own file: a second `init()` in one process is a no-op.
+ * through the store handed to `init()`, while those registrations are unanswered: each request is
+ * sent only after 4s, as on a slow network. By then a translator has translated the content, so
+ * the switched catalog arrives with it. A registration answered afterwards marks only what that
+ * catalog does not already hold, so `<Translate>`, `<Phrase>` and `useT()` show the translation.
+ *
+ * Run against the API on an SDK test clone (spec CONF-2). The translator's work is the case's own
+ * call to the API's registration route, under the project's write key, carrying the translations
+ * an import carries (MIG-9): the API stores them as the project's, and the switched catalog serves
+ * them. What renders is the API's catalog answer. Its own file: a second `init()` in one process
+ * is a no-op.
  */
 
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
-    keys: [{ key: 'k-writer', project: 'p1', type: 'write' }],
-};
-
 let fx: ContractFixture;
+let w: World;
 let el: HTMLElement;
 let blockId: string;
 /** Each registration request: what it carried, and the locale loaded when it was sent and when it was answered. */
@@ -34,13 +38,14 @@ const Greeting = defineComponent({
 
 beforeAll(async () => {
     fx = await startContractFixture();
-    await fx.seed(SEED);
+    w = seeds.take('base');
+    await fx.use(w);
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     const store = createLocaleStore('en');
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-writer',
+        projectid: w.project(),
+        key: w.key('k-writer'),
         UserLocaleStore: store,
         baseLocale: 'en',
         apiUrl: fx.baseUrl,
@@ -59,7 +64,7 @@ beforeAll(async () => {
             answeredIn: undefined as string | undefined,
         };
         requests.push(request);
-        await sleep(800);
+        await sleep(4_000);
         const answer = await real(url, init);
         request.answeredIn = currentlyLoadedLocale.get();
         return answer;
@@ -77,44 +82,58 @@ beforeAll(async () => {
                 ]),
         })
     ).mount(el);
-    await until(() => requests.length >= 1);
-    await sleep(500);
+    await until(() => requests.length >= 1, 10_000, 50);
 
-    // The content as a translator has left it by the time the visitor switches language.
+    // The content as a translator has left it by the time the visitor switches language, as an
+    // import registers it: each phrase with the translations already held for it. The API accepts
+    // it before the SDK's own registration is sent.
     blockId = el.querySelector('translate')!.getAttribute('data-ls-contentblock')!;
-    await fx.seed({
-        ...SEED,
-        projects: [
-            {
-                ...SEED.projects[0]!,
-                phrases: [
-                    {
-                        category: 'UI',
-                        phrase: 'Welcome {m0o}back{m0c}',
-                        translations: { 'es-es': 'Bienvenido {m0o}de nuevo{m0c}' },
-                    },
-                    { category: 'UI', phrase: 'Good to see you', translations: { 'es-es': 'Me alegra verte' } },
-                ],
-                blocks: [
-                    {
-                        category: 'UI',
-                        custom_id: blockId,
-                        phrases: [
-                            { phrase: 'A caption', translations: { 'es-es': 'Un pie de foto' } },
-                            { phrase: 'Under the photo', translations: { 'es-es': 'Bajo la foto' } },
-                        ],
-                    },
-                ],
-            },
-        ],
+    const imported = await fx.api('/translatable-items', {
+        key: w.key('k-writer'),
+        method: 'POST',
+        body: {
+            project_id: w.project(),
+            translatable_items: [
+                {
+                    type: 'phrase',
+                    category: 'UI',
+                    phrase: 'Welcome {m0o}back{m0c}',
+                    translations: [{ locale: 'es-es', translation: 'Bienvenido {m0o}de nuevo{m0c}' }],
+                },
+                {
+                    type: 'phrase',
+                    category: 'UI',
+                    phrase: 'Good to see you',
+                    translations: [{ locale: 'es-es', translation: 'Me alegra verte' }],
+                },
+                {
+                    type: 'content_block',
+                    category: 'UI',
+                    custom_id: blockId,
+                    content: '<p>A caption</p><p>Under the photo</p>',
+                    phrases: [
+                        { phrase: 'A caption', translations: [{ locale: 'es-es', translation: 'Un pie de foto' }] },
+                        { phrase: 'Under the photo', translations: [{ locale: 'es-es', translation: 'Bajo la foto' }] },
+                    ],
+                },
+            ],
+        },
     });
+    if (imported.status >= 300)
+        throw new Error(`the import answered ${imported.status}: ${JSON.stringify(imported.body)}`);
+    expect(
+        requests.filter((r) => r.answeredIn !== undefined),
+        'the SDK’s registrations are not answered yet'
+    ).toEqual([]);
     store.set('es-es');
-    await until(() => currentlyLoadedLocale.get() === 'es-es');
+    await until(() => currentlyLoadedLocale.get() === 'es-es', 10_000, 50);
+    // The race this covers: the registrations answered after the switch's catalog loaded.
+    await until(() => requests.length > 0 && requests.every((r) => r.answeredIn !== undefined), 30_000, 100);
     await sleep(1_500);
 });
 afterAll(async () => {
     vi.unstubAllGlobals();
-    await fx.stop();
+    await fx?.stop();
 });
 
 describe('a registration answered after a locale switch keeps the switched catalog', () => {
@@ -132,5 +151,11 @@ describe('a registration answered after a locale switch keeps the switched catal
     it('<Phrase> and useT() show the switched catalog’s translations', () => {
         expect(el.querySelector('[data-ls-phrase]')?.innerHTML).toBe('Bienvenido <b>de nuevo</b>');
         expect(el.querySelector('em')?.textContent).toBe('Me alegra verte');
+    });
+
+    it('what the page shows is what the API holds: the content and its translations are stored', async () => {
+        expect(everyText(await fx.held(w.key('k-writer'), w.project(), 'es-es'))).toEqual(
+            expect.arrayContaining(['A caption', 'Under the photo', 'Welcome {m0o}back{m0c}', 'Good to see you'])
+        );
     });
 });

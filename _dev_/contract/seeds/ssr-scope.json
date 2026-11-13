@@ -1,0 +1,156 @@
+{
+    "projects": [
+        {
+            "id": "79000500-0001-4000-8000-000000000000",
+            "title": "vue ssr-scope base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Pricing",
+                    "translations": {
+                        "it": "Prezzi",
+                        "de": "Preise"
+                    }
+                }
+            ],
+            "user": {
+                "token": "142001|7f7d1439baac09e726a559cb8efaf04e2acac4c2",
+                "device_id": "vue-ssr-scope-1"
+            }
+        },
+        {
+            "id": "79000500-0002-4000-8000-000000000000",
+            "title": "vue ssr-scope base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Pricing",
+                    "translations": {
+                        "it": "Prezzi",
+                        "de": "Preise"
+                    }
+                }
+            ],
+            "user": {
+                "token": "142002|b3a7062935bd30b211752024b4eab55336829537",
+                "device_id": "vue-ssr-scope-2"
+            }
+        },
+        {
+            "id": "79000500-0003-4000-8000-000000000000",
+            "title": "vue ssr-scope base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Pricing",
+                    "translations": {
+                        "it": "Prezzi",
+                        "de": "Preise"
+                    }
+                }
+            ],
+            "user": {
+                "token": "142003|6940ec63f17234550bb0d0aab446342474e116a5",
+                "device_id": "vue-ssr-scope-3"
+            }
+        },
+        {
+            "id": "79000500-0004-4000-8000-000000000000",
+            "title": "vue ssr-scope base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Pricing",
+                    "translations": {
+                        "it": "Prezzi",
+                        "de": "Preise"
+                    }
+                }
+            ],
+            "user": {
+                "token": "142004|4f58df0faf2c3c52f400c73d4f71a490e5615004",
+                "device_id": "vue-ssr-scope-4"
+            }
+        },
+        {
+            "id": "79000500-0005-4000-8000-000000000000",
+            "title": "vue ssr-scope base#1 pass 4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Pricing",
+                    "translations": {
+                        "it": "Prezzi",
+                        "de": "Preise"
+                    }
+                }
+            ],
+            "user": {
+                "token": "142005|d3927a52b2d76b0114fd3e4e47059ed0489fa484",
+                "device_id": "vue-ssr-scope-5"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000501-0001-4000-8000-000000000000",
+            "key": "vue-ssr-scope-1-k-writer",
+            "project": "79000500-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000501-0002-4000-8000-000000000000",
+            "key": "vue-ssr-scope-2-k-writer",
+            "project": "79000500-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000501-0003-4000-8000-000000000000",
+            "key": "vue-ssr-scope-3-k-writer",
+            "project": "79000500-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000501-0004-4000-8000-000000000000",
+            "key": "vue-ssr-scope-4-k-writer",
+            "project": "79000500-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000501-0005-4000-8000-000000000000",
+            "key": "vue-ssr-scope-5-k-writer",
+            "project": "79000500-0005-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

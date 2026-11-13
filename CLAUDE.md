@@ -38,48 +38,59 @@ src/
     marker-ssr.test.ts        # MARK-1: served <Translate> host identity vs the core's own stamp
     hydration-handoff.test.ts # SRV-4: synchronous seed before mount vs an unseeded control
     hydration-handoff-init.test.ts # SRV-4: init() seeds only after its round trip (own process)
-    api-redirect.test.ts      # WIRE-5: apiUrl through the init override reaches a double; ICU-5: the catalog request declares icu (own process)
-    navigation-contract.test.ts # HINT-13 against the contract double: layout, KeepAlive, param reuse, cached blocks (own process)
-    resolved-contract.test.ts # GATE-10 against the contract double: data-ls-resolved through each wrapper (own process)
+    api-redirect.test.ts      # WIRE-5: apiUrl through the init override reaches a stubbed transport; ICU-5: the catalog request declares icu (own process)
+    navigation-contract.test.ts # HINT-13 on the SDK test clone: layout, KeepAlive, param reuse, cached blocks (own process)
+    resolved-contract.test.ts # GATE-10 on the SDK test clone: data-ls-resolved through each wrapper (own process)
     server-message.test.ts    # MSG-5 shared render vectors through a mounted component; MSG-12 page half
     legacy-keys-passthrough.test.ts # MIG: legacyKeys reach the core through the init override (own process)
     snapshot-passthrough.test.ts # SNAP-2/3: loadSnapshot forwarded; refusals reach the caller
     ssr-scope.test.ts         # SRV-7/SRV-2: request scopes — run, provide (Nuxt), enter; the enter-in-plugin hazard; what else reads the provided scope
-    ssr-scope-contract.test.ts # SRV-1/SRV-3 through a scope against the contract double (own process)
+    ssr-scope-contract.test.ts # SRV-1/SRV-3 through a scope, on the SDK test clone (own process)
     ssr-subscriptions.test.ts # server renders leave no subscription on the core's signals
     block-vnodes.test.ts      # slot → tree mapping, fallbacks, re-attachment through `source`
     block-ssr.test.ts         # <Translate>/<Phrase> served translated and stamped; hydration parity
     move-nested.test.ts       # MOVE-4: a nested unit naming no category takes the block's category and move, on the tree path, in a block that falls back, through components; controls naming their own
     category-move.test.ts     # MOVE-1..5: previousCategory through <Translate>/<Phrase>/nested <Phrase>, inCategory() via useT() and the compiler's t() rewrite; stamps, ids, the scope's record
     docs-icu7.test.ts         # ICU-7: README, README-SSR, TESTING, _dev_/*.md and example/ write phrases flat; the scan's own failing cases
+    seed-files.test.ts        # the seed files are their worlds rendered, each one the clone's seeder accepts, ids and addresses in Vue's range
     compiler.test.ts          # VAR-2 shared naming vectors, the transform on all four compile paths, t() rewriting, VAR-7, values inside an exclusion (TOK-1)
     locale-headers.test.ts    # FRM-6: localeHeaders() re-exported and forwarded; the scope's locale inside a scope
-    variables-contract.test.ts # VAR-1/6/7 against the contract double: two users, with and without the transform (own process)
+    variables-contract.test.ts # VAR-1/6/7 on the SDK test clone: two users, with and without the transform (own process)
     handoff-contract.test.ts  # seedCatalog(…, seed): a server-collected block is never sent by the client (own process)
     block-modes.test.ts       # <Translate> through the page's life: slot path changes, child text updates, unmount in the settle window, KeepAlive
     block-updates-contract.test.ts # a slot that changes after mount, or while <KeepAlive> holds it, registers what it now shows (own process)
-    catalog-supersede.test.ts # a locale switch through the binding's store that overtakes a catalog fetch (own process)
+    catalog-supersede-contract.test.ts # a locale switch through the binding's store that overtakes a catalog fetch (own process)
     require-credentials.test.ts # WIRE-4: under requireCredentials, a failed registration reaches the app's errorHandler, before init() too; t() throws at first use (own process)
     unconfigured.test.ts      # WIRE-4: an app with no credentials boots, renders its source with params filled, fetches nothing (own process)
     register-once-contract.test.ts # REG-7: a block mounted as init() starts, re-registered on every t change, is sent once (own process)
     switch-during-registration-contract.test.ts # REG-13: a registration answered after a locale switch keeps the switched catalog (own process)
     ssr-register.test.ts      # a server render registers inside its request scope (provided or run), or not at all
     ssr-credentials-contract.test.ts # SRV-2: two concurrent server renders, each under its own scope's project id and key; none inherits init()'s (own process)
-test/helpers/contract-fixture.ts # starts the contract double; exposes accepted state only
+    client-registers-contract.test.ts # SRV-7: a block the server rendered and left to the client is registered from the hydrated page, under the served id (own process)
+    reference-lists-contract.test.ts # REF-1: a list call through the binding answers the core's held list and sends nothing (own process)
+test/helpers/contract-fixture.ts # starts the forwarder in front of the SDK test clone; reads back only what the API holds
+test/helpers/contract-worlds.ts  # the worlds the clone is seeded with: fixed ids and addresses in Vue's range 79, a pool per world, passes
+test/helpers/contract-addresses.mjs # the caller-address formula, shared with _dev_/contract/world.mjs
+test/helpers/contract-seeds/   # one module per contract file (and the playground's, Nuxt's): its worlds, rendered to _dev_/contract/seeds/
+test/helpers/contract-held.ts  # shapes a catalog read for assertions
+test/helpers/stub-api.ts       # a stand-in for the API's transport, for unit suites; evidence of nothing a server does
+test/helpers/wait.ts           # sleep/until for in-process waits (25ms polls)
 test/helpers/icu-docs.ts      # ICU-7's documentation scan: an ICU construct outside a named exempt passage is a finding
 test/fixtures/server-message-vectors.json # vendored byte-exact from langsys-js-typescript — never edit
 test/fixtures/var-naming-vectors.json     # vendored byte-exact from langsys-js-typescript — never edit
 test/fixtures/snapshot-vectors.json       # vendored byte-exact from langsys-js-typescript — never edit
 test/fixtures/laravel-inertia-failed-form-page.json # vendored byte-exact from langsys-php-laravel (MSG-12) — never edit
-contract-fixture/             # the contract double, vendored byte-exact (tree id cited in CONFORMANCE.md) — never edit
+contract-fixture/             # the contract forwarder, vendored byte-exact from the core (tree id cited in CONFORMANCE.md) — never edit
+_dev_/contract/seeds/         # the seed files the SDK test clone reads (SDK_TEST_SEED_PATHS); rendered by src/seed-files.test.ts -u — never hand-edit
+_dev_/contract/world.mjs      # a script's world (playground, Nuxt) read from its seed file
 _dev_/mutations.mjs           # CONF-3: every cited mutation, re-runnable in a temporary worktree (npm run test:mutations)
 _dev_/check-conformance.py    # CONFORMANCE.md against the spec files it is given: header blobs, one row per rule, canonical statuses and tiers, core citations, the tally (--selftest)
 _dev_/conformance-probes.py   # re-measures every absence probe in CONFORMANCE.md over src/ and the core at a commit (--check)
 example/                      # Vite playground (npm run dev) — not published
 example/nuxt/                 # Nuxt app in the documented SSR shape; built and served by npm run test:nuxt
-_dev_/nuxt-e2e.mjs            # builds example/nuxt with Nuxt against packed tarballs, serves it against the contract double
-_dev_/local-double.mjs        # npm run double: the contract double on :8789, seeded from _dev_/local-seed.json, for TESTING.md
-TESTING.md                    # testing by hand: link the local core, run the double and the playground, one check per feature
+_dev_/nuxt-e2e.mjs            # builds example/nuxt with Nuxt against packed tarballs, serves it against the SDK test clone
+_dev_/fixture.mjs             # npm run fixture: the forwarder on :8789 as the playground's world, for TESTING.md
+TESTING.md                    # testing by hand: link the local core, run the forwarder and the playground, one check per feature
 ```
 
 That's the entire surface. Every other concern — HTTP, missing-token registration, persistence, SSR strategies, lookup/interpolation logic — lives in `langsys-js-typescript`.
@@ -105,7 +116,7 @@ Components are authored as `defineComponent` + `h()` render functions in plain `
 ```typescript
 // Main entry point — wraps init to accept a Signal<string>, delegates everything else
 LangsysApp.init({ projectid, key, UserLocaleStore, apiUrl?, baseLocale?, debug?, ssrTokenStrategy?, initialTranslations?, initialTranslationsLocale?, writeGrant?, requireCredentials? })
-// apiUrl points at another server or a test double; the core applies it inside init() before authorizing.
+// apiUrl points at another server, such as the contract forwarder; the core applies it inside init() before authorizing.
 // Without a project id, key or locale store, init() resolves { status: false } and the client is unconfigured (WIRE-4):
 // source renders, nothing is sent, a block registration resolves skipped 'not-configured', an explicit write throws
 // LangsysConfigurationError; requireCredentials makes t() throw it too. LangsysApp.isConfigured() reports the state.
@@ -178,10 +189,11 @@ WriteGrantSource (the Vue-flavored one — WriteGrant | Ref<string | null | unde
 - `npm run dev` — Vite dev server with the demo in `example/`. Needs `.env` at the repo root with `VITE_LANGSYS_PROJECT_ID` and `VITE_LANGSYS_API_KEY` (see `.env.example`).
 - `npm run typecheck` — `tsc --noEmit`. Should be clean before any commit. CI runs it.
 - `npm run build` — `tsup` → builds ESM + CJS + `.d.ts` to `dist/`.
-- `npm run test` — Vitest (`vitest run`), node environment by default; DOM suites opt into jsdom per file.
-- `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. It runs in a temporary git worktree (HEAD plus the checkout's uncommitted changes, `node_modules` linked) and never writes to the checkout. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale — including after Prettier rewraps a targeted line.
-- `npm run test:nuxt` — packs the core (the build `node_modules/langsys-js-typescript` resolves to, or `LANGSYS_CORE=<dir>`) and this package, installs both with Nuxt into a temporary copy of `example/nuxt`, builds it, and serves it against the contract double: concurrent it/de isolation, a variable registered once as its placeholder, blocks registered from the server, the payload seed marking them `collected`. Needs the network for the Nuxt install (~2 min); not part of `npm test` or CI.
-- `npm run double` — the contract double on `http://127.0.0.1:8789/api` (`--port` to move it), seeded for testing by hand (`TESTING.md`). The playground reaches it through the Vite proxy (`LANGSYS_API_PROXY`), since the double sends no CORS headers.
+- `npm run test` — Vitest's `unit` project (`vitest run --project unit`), node environment by default; DOM suites opt into jsdom per file. No API and no listening socket.
+- `npm run test:contract` — the `contract` project: every `src/*-contract.test.ts`, one file at a time, against the SDK test clone through `contract-fixture/forwarder.mjs` (spec CONF-2). Needs `LANGSYS_CONTRACT_TARGET`, `LANGSYS_CONTRACT_CLONE_ROOT` and `NODE_EXTRA_CA_CERTS` (TESTING.md), and fails without them rather than skipping. The clone is shared by every SDK lane: ask SDK API on the `vue-sdk-test-clone` topic before every run, and never reseed it. `LANGSYS_CONTRACT_PASS=N` takes pass N of every file's worlds (default 0); a second run before a reseed takes the next pass.
+- `npm run test:mutations` — re-applies every mutation `CONFORMANCE.md` cites and requires each to turn its check red. It runs in a temporary git worktree (HEAD plus the checkout's uncommitted changes, `node_modules` linked) and never writes to the checkout. By default it runs each mutation's unit files and lists the ones that need the clone; `-- --contract --pass N` runs those on the clone, the baseline at pass N and the j-th mutation naming a file at pass N + 1 + j of that file. Run it before claiming CONF-3, and after any edit to a file a mutation targets: a snippet that no longer matches exactly once fails the run as stale — including after Prettier rewraps a targeted line.
+- `npm run test:nuxt` — packs the core (the build `node_modules/langsys-js-typescript` resolves to, or `LANGSYS_CORE=<dir>`) and this package, installs both with Nuxt into a temporary copy of `example/nuxt`, builds it, and serves it against the SDK test clone through the forwarder, as `_dev_/contract/seeds/nuxt.json`'s world in pass `LANGSYS_CONTRACT_PASS`: concurrent it/de isolation, a variable registered once as its placeholder, blocks registered from the server, the payload seed marking them `collected`. Needs the clone's variables and the network for the Nuxt install (~2 min); not part of `npm test` or CI.
+- `npm run fixture` — the forwarder on `http://127.0.0.1:8789/api` (`--port` to move it), as the playground's world, for testing by hand (`TESTING.md`). The playground reaches it through the Vite proxy (`LANGSYS_API_PROXY`), since the forwarder sends no CORS headers.
 - `npm run lint` / `npm run format` — Prettier + ESLint (flat config in `eslint.config.mjs`). Not run in CI.
 
 Note: the Vite/Vitest configs use the `.mts` extension (`vite.config.mts`, `vitest.config.mts`) so they load as ESM on Node versions without `require(esm)` support.
@@ -270,12 +282,13 @@ The three trust-handshake strings must stay in sync, or CI will fail at the publ
 - **Every phrase a developer reads is written flat (ICU-7).** The README, README-SSR, TESTING, `_dev_/*.md` and every file under `example/` write the sentence with `{placeholders}` and never a `plural`, `select` or `selectordinal`; Langsys makes the forms. ICU appears there only as what the catalog returns, as MIG-4's conversion, or as a counter-example marked `❌` beside its flat phrase, and each such passage is named in `EXEMPT` in `src/docs-icu7.test.ts`, so a new one fails `npm test` until someone names it (M115). CHANGELOG, CONFORMANCE and this file are outside the scan.
 - **`contract-fixture/` and the files in `test/fixtures/` are vendored byte-exact.** Never edit or reformat them (all are in `.prettierignore`); refresh by copying from the source repo at a cited commit and re-deriving the tree id and blob.
 - **Every mutation `CONFORMANCE.md` cites lives in `_dev_/mutations.mjs`.** A mutation that exists only in a commit message is a memory, not evidence (CONF-2).
+- **A contract file's seed file holds a pass for every run between reseeds.** What a run writes stays on the clone, so `test:contract`, its retries, the mutation baseline and each mutation naming the file each take a pass of their own; `src/seed-files.test.ts` fails when a file's `passes` is under 3 plus the mutations naming it. A new contract file gets a seed module named after it and an index of its own (1–20). The clone reads `_dev_/contract/seeds/` as it stands at anyone's reseed, so one unchecked file there can stop every SDK's reseed: render a new or changed file outside the folder first, send it to SDK API for its dry run, and copy it in (or run `-u`) only after its OK. The clone takes it at the next reseed.
 - **Keep `refToLocaleSource`'s watcher on `flush: 'sync'`, in a detached effect scope.** The base SDK's Signal contract is synchronous notification; async flushes make locale changes lag a tick and can reorder against `translationsLoadingPromise` reads. The core subscribes inside `init()`, which an app may call from a component; a watcher owned by that component's scope stops when it unmounts and the SDK stops following the locale (M55).
 - **`<Translate>` and `<Phrase>` re-sync with their slot after every update (`onUpdated`).** A slot can change path or content after mount: one that now converts drops any DOM class and registers its new tree; one that now falls back gets the DOM class. Rendering registers nothing, so without this a `v-if` swap or a component appearing in the slot is never registered, and a slot that turns into a component is never translated (M56–M58). Re-registration is keyed on the serialized tree, so a re-render that changes nothing sends nothing.
 
 ## Testing approach
 
-Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. DOM-level suites run under jsdom per file: `rendered.test.ts` and `route-reentry.test.ts` (real `vue-router`, including `<KeepAlive>` and param-only navigation), `marker-ssr.test.ts` (served HTML vs the core's own stamp on a plain element), and the SRV-4 hydration pair, which hydrates real server output and captures Vue's own mismatch warnings. Any case that calls `init()` gets its own file, because a second `init()` in one process is a no-op and would let the case pass without init running. The contract suites (each `*-contract.test.ts`, plus `catalog-supersede.test.ts` and `legacy-keys-passthrough.test.ts`) start the vendored contract double and assert on its accepted state; each absence there is paired with a presence the double stored in the same file, from a session the double accepts the action from. The live reactive path is also exercised by the `example/` playground.
+Vitest in a `node` environment. `adapters.test.ts` covers the store/adapter contracts (including effect-scope disposal via `effectScope`); `composables.test.ts` covers `useWriteEnabled` — SSR non-subscription, hydration deferral, the tri-state, and scope teardown — by mocking only `writeEnabled` out of the base SDK and re-importing Vue through the same `vi.resetModules()` registry as the module under test (a scope from the test file's own copy of Vue would be invisible to a freshly-reset `composables.ts`, and every disposal assertion would silently pass while testing nothing); `components.test.ts` asserts the server-rendered structural contract (host tags, `translate="no"`, `data-ls-phrase`) via `vue/server-renderer` — server rendering doesn't run `onMounted`, so the vanilla handlers stay unmounted by design. DOM-level suites run under jsdom per file: `rendered.test.ts` and `route-reentry.test.ts` (real `vue-router`, including `<KeepAlive>` and param-only navigation), `marker-ssr.test.ts` (served HTML vs the core's own stamp on a plain element), and the SRV-4 hydration pair, which hydrates real server output and captures Vue's own mismatch warnings. Any case that calls `init()` gets its own file, because a second `init()` in one process is a no-op and would let the case pass without init running. The contract suites (each `*-contract.test.ts`) run against the SDK test clone, a real Langsys API, through the vendored forwarder; each takes its world with `seeds.take()`, confirms with `fx.use()` that the clone holds it as seeded, and asserts on what the API's read routes return: the catalog, each block's stored content as the project's owner reads it, and the hints the clone stored. Each absence there is paired with a presence the API stored in the same file, from a session the API accepts the action from. A clause that the SDK sends nothing, or sends something once, is counted at the transport seam beside them (CONF-2). Unit suites that need an API answer to boot use `stub-api.ts`, whose answers are evidence of nothing a server does. The live reactive path is also exercised by the `example/` playground.
 
 **A route re-entry verdict counts only behind two controls.** Every case in `route-reentry.test.ts` first asserts that the URL moved to the new route and that a component inside `<RouterView>` re-entered `t()` at that URL; the fake `t()` records `window.location.href` per call for exactly this. Without them, a memory history (the URL never moves, so a correct re-entry captures the old URL) or a read before `router.push()` settles (nothing has re-rendered) turns a correct binding into "does not re-enter". Keep a history that moves `window.location`, keep the settle, and keep M22 and M23 red.
 

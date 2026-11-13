@@ -20,6 +20,9 @@ CONFORMANCE.md
 
 # Vendored byte-exact from langsys-js-typescript; cited by tree id
 contract-fixture/
+
+# Rendered by src/seed-files.test.ts (-u) from test/helpers/contract-seeds/; the clone's seeder reads them
+_dev_/contract/seeds/
 test/fixtures/server-message-vectors.json
 test/fixtures/snapshot-vectors.json
 test/fixtures/var-naming-vectors.json

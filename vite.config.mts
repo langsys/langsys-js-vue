@@ -11,7 +11,7 @@ import { langsysTransform } from './src/compiler';
  * library hot-reload. `.env` is read from the repo root (see `.env.example`).
  *
  * `LANGSYS_API_PROXY` serves another API under this origin's `/api`, so the
- * browser calls it same-origin: the local contract double (`npm run double`)
+ * browser calls it same-origin: the contract forwarder (`npm run fixture`)
  * sends no CORS headers. Pair it with `VITE_LANGSYS_API_URL=/api`.
  */
 export default defineConfig(({ mode }) => {

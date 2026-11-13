@@ -1,6 +1,6 @@
 import { langsysTransform } from 'langsys-js-vue/compiler';
 
-// The end-to-end Nuxt app `_dev_/nuxt-e2e.mjs` builds against the contract double.
+// The end-to-end Nuxt app `_dev_/nuxt-e2e.mjs` builds and serves against an SDK test clone.
 export default defineNuxtConfig({
     compatibilityDate: '2026-09-01',
     ssr: true,

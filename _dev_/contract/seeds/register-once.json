@@ -1,0 +1,118 @@
+{
+    "projects": [
+        {
+            "id": "79000400-0001-4000-8000-000000000000",
+            "title": "vue register-once base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                }
+            ],
+            "user": {
+                "token": "141501|487c559aee07d7105734935ecec882ff5fce4aa3",
+                "device_id": "vue-register-once-1"
+            }
+        },
+        {
+            "id": "79000400-0002-4000-8000-000000000000",
+            "title": "vue register-once base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                }
+            ],
+            "user": {
+                "token": "141502|a6331865d763111c7363635648b99d80bb563aad",
+                "device_id": "vue-register-once-2"
+            }
+        },
+        {
+            "id": "79000400-0003-4000-8000-000000000000",
+            "title": "vue register-once base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                }
+            ],
+            "user": {
+                "token": "141503|427aa5e5e6c025fd24339024a80e00683308645f",
+                "device_id": "vue-register-once-3"
+            }
+        },
+        {
+            "id": "79000400-0004-4000-8000-000000000000",
+            "title": "vue register-once base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                }
+            ],
+            "user": {
+                "token": "141504|f1be2db838b01e270e6f1df62eba151073e7549a",
+                "device_id": "vue-register-once-4"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000401-0001-4000-8000-000000000000",
+            "key": "vue-register-once-1-k-writer",
+            "project": "79000400-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000401-0002-4000-8000-000000000000",
+            "key": "vue-register-once-2-k-writer",
+            "project": "79000400-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000401-0003-4000-8000-000000000000",
+            "key": "vue-register-once-3-k-writer",
+            "project": "79000400-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000401-0004-4000-8000-000000000000",
+            "key": "vue-register-once-4-k-writer",
+            "project": "79000400-0004-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

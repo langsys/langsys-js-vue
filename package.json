@@ -48,7 +48,8 @@
         "build": "tsup",
         "build:watch": "tsup --watch",
         "typecheck": "tsc --noEmit",
-        "test": "vitest run",
+        "test": "vitest run --project unit",
+        "test:contract": "vitest run --project contract",
         "test:watch": "vitest",
         "lint": "prettier --check . && eslint .",
         "format": "prettier --write .",
@@ -56,7 +57,7 @@
         "release": "./_dev_/publish.sh",
         "test:mutations": "node _dev_/mutations.mjs",
         "test:nuxt": "node _dev_/nuxt-e2e.mjs",
-        "double": "node _dev_/local-double.mjs"
+        "fixture": "node _dev_/fixture.mjs"
     },
     "keywords": [
         "i18n",

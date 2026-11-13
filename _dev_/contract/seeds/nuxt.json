@@ -1,0 +1,126 @@
+{
+    "projects": [
+        {
+            "id": "79000c00-0001-4000-8000-000000000000",
+            "title": "vue nuxt base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello {first_name}",
+                    "translations": {
+                        "it": "Ciao {first_name}",
+                        "de": "Hallo {first_name}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "145501|0a50d98bdfc471c5710117725e3f69f978fc1266",
+                "device_id": "vue-nuxt-1"
+            }
+        },
+        {
+            "id": "79000c00-0002-4000-8000-000000000000",
+            "title": "vue nuxt base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello {first_name}",
+                    "translations": {
+                        "it": "Ciao {first_name}",
+                        "de": "Hallo {first_name}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "145502|6a992ecebe40d5cbe22632af3b3e558018d9e30e",
+                "device_id": "vue-nuxt-2"
+            }
+        },
+        {
+            "id": "79000c00-0003-4000-8000-000000000000",
+            "title": "vue nuxt base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello {first_name}",
+                    "translations": {
+                        "it": "Ciao {first_name}",
+                        "de": "Hallo {first_name}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "145503|90b6faf8a0377be37e25b288f48cef2788cbb2e7",
+                "device_id": "vue-nuxt-3"
+            }
+        },
+        {
+            "id": "79000c00-0004-4000-8000-000000000000",
+            "title": "vue nuxt base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "it",
+                "de"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello {first_name}",
+                    "translations": {
+                        "it": "Ciao {first_name}",
+                        "de": "Hallo {first_name}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "145504|7d2d45df4b69074adbba07180fcdec534fc4221e",
+                "device_id": "vue-nuxt-4"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000c01-0001-4000-8000-000000000000",
+            "key": "vue-nuxt-1-k-writer",
+            "project": "79000c00-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000c01-0002-4000-8000-000000000000",
+            "key": "vue-nuxt-2-k-writer",
+            "project": "79000c00-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000c01-0003-4000-8000-000000000000",
+            "key": "vue-nuxt-3-k-writer",
+            "project": "79000c00-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000c01-0004-4000-8000-000000000000",
+            "key": "vue-nuxt-4-k-writer",
+            "project": "79000c00-0004-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

@@ -1,0 +1,367 @@
+{
+    "projects": [
+        {
+            "id": "79000800-0001-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143501|c27794b08deff0c2e47cee9354b0b217103396fc",
+                "device_id": "vue-variables-1"
+            }
+        },
+        {
+            "id": "79000800-0002-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143502|da2fce1729f1510a34d91065613489c45358e9a7",
+                "device_id": "vue-variables-2"
+            }
+        },
+        {
+            "id": "79000800-0003-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143503|7f981f9cdfd71bdab0e88ca749a10f37c3ba35e0",
+                "device_id": "vue-variables-3"
+            }
+        },
+        {
+            "id": "79000800-0004-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143504|d3397831211c213064edea3902e67b66159cf511",
+                "device_id": "vue-variables-4"
+            }
+        },
+        {
+            "id": "79000800-0005-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143505|9d03f71d6c5b0b1d43c7e77c3eebe8ae2c705155",
+                "device_id": "vue-variables-5"
+            }
+        },
+        {
+            "id": "79000800-0006-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143506|b2ae049550472e56f62e81277547ddf0400f02b7",
+                "device_id": "vue-variables-6"
+            }
+        },
+        {
+            "id": "79000800-0007-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143507|c97298f471cb0ba655bf46753604021b588ad54e",
+                "device_id": "vue-variables-7"
+            }
+        },
+        {
+            "id": "79000800-0008-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143508|f503ff8645d25934734ba2879300b2634f19bffe",
+                "device_id": "vue-variables-8"
+            }
+        },
+        {
+            "id": "79000800-0009-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 8 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143509|e627b5134b92826b2f89c80a3f361911542c21c9",
+                "device_id": "vue-variables-9"
+            }
+        },
+        {
+            "id": "79000800-000a-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 9 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143510|f064df386e94345f36f2bf903e81fc94620a5e77",
+                "device_id": "vue-variables-10"
+            }
+        },
+        {
+            "id": "79000800-000b-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 10 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143511|48e8059841ee14fdf57bd70211dd47282f99eb6e",
+                "device_id": "vue-variables-11"
+            }
+        },
+        {
+            "id": "79000800-000c-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 11 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143512|d7a4391c2ff7570d8bf15ce7118c3ef327d3c257",
+                "device_id": "vue-variables-12"
+            }
+        },
+        {
+            "id": "79000800-000d-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 12 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143513|ca9236e801da7e2dce9594dffa4ca4d81e65bacb",
+                "device_id": "vue-variables-13"
+            }
+        },
+        {
+            "id": "79000800-000e-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 13 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143514|c90578b59131b5b78b7e904b8eb46252fcc0fac2",
+                "device_id": "vue-variables-14"
+            }
+        },
+        {
+            "id": "79000800-000f-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 14 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143515|c2f94beb1502b00f63bcba5dc1b6231a80b5dae0",
+                "device_id": "vue-variables-15"
+            }
+        },
+        {
+            "id": "79000800-0010-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 15 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143516|8b35a6a61bdaeec82ca16b4becc2f28c2e4a6ab3",
+                "device_id": "vue-variables-16"
+            }
+        },
+        {
+            "id": "79000800-0011-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 16 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143517|7a8551f90fb7e9f56c9b8dd0fb823d4d15566a75",
+                "device_id": "vue-variables-17"
+            }
+        },
+        {
+            "id": "79000800-0012-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 17 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143518|49e292d1fc0c1adafaf88b337e382320583b3b7c",
+                "device_id": "vue-variables-18"
+            }
+        },
+        {
+            "id": "79000800-0013-4000-8000-000000000000",
+            "title": "vue variables base#1 pass 18 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "143519|cf0523b7d77cbaeb33256135a048df992089693d",
+                "device_id": "vue-variables-19"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000801-0001-4000-8000-000000000000",
+            "key": "vue-variables-1-k-writer",
+            "project": "79000800-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0002-4000-8000-000000000000",
+            "key": "vue-variables-2-k-writer",
+            "project": "79000800-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0003-4000-8000-000000000000",
+            "key": "vue-variables-3-k-writer",
+            "project": "79000800-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0004-4000-8000-000000000000",
+            "key": "vue-variables-4-k-writer",
+            "project": "79000800-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0005-4000-8000-000000000000",
+            "key": "vue-variables-5-k-writer",
+            "project": "79000800-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0006-4000-8000-000000000000",
+            "key": "vue-variables-6-k-writer",
+            "project": "79000800-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0007-4000-8000-000000000000",
+            "key": "vue-variables-7-k-writer",
+            "project": "79000800-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0008-4000-8000-000000000000",
+            "key": "vue-variables-8-k-writer",
+            "project": "79000800-0008-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0009-4000-8000-000000000000",
+            "key": "vue-variables-9-k-writer",
+            "project": "79000800-0009-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-000a-4000-8000-000000000000",
+            "key": "vue-variables-10-k-writer",
+            "project": "79000800-000a-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-000b-4000-8000-000000000000",
+            "key": "vue-variables-11-k-writer",
+            "project": "79000800-000b-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-000c-4000-8000-000000000000",
+            "key": "vue-variables-12-k-writer",
+            "project": "79000800-000c-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-000d-4000-8000-000000000000",
+            "key": "vue-variables-13-k-writer",
+            "project": "79000800-000d-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-000e-4000-8000-000000000000",
+            "key": "vue-variables-14-k-writer",
+            "project": "79000800-000e-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-000f-4000-8000-000000000000",
+            "key": "vue-variables-15-k-writer",
+            "project": "79000800-000f-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0010-4000-8000-000000000000",
+            "key": "vue-variables-16-k-writer",
+            "project": "79000800-0010-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0011-4000-8000-000000000000",
+            "key": "vue-variables-17-k-writer",
+            "project": "79000800-0011-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0012-4000-8000-000000000000",
+            "key": "vue-variables-18-k-writer",
+            "project": "79000800-0012-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000801-0013-4000-8000-000000000000",
+            "key": "vue-variables-19-k-writer",
+            "project": "79000800-0013-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}

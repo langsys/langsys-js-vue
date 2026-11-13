@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { startContractFixture, until, type ContractFixture } from '../test/helpers/contract-fixture.js';
+import { STUB_API_URL, stubApi, type StubbedApi } from '../test/helpers/stub-api.js';
+import { until } from '../test/helpers/wait.js';
 import { createLocaleStore, currentlyLoadedLocale, LangsysApp } from './index.js';
 
 /**
@@ -13,40 +14,36 @@ import { createLocaleStore, currentlyLoadedLocale, LangsysApp } from './index.js
  * pipes stay literal. The files are the shared `mig-vectors.json` resolution cases
  * `vue-file-plural` and a plain key beside it.
  *
- * Its own file: a second `init()` in one process is a no-op.
+ * What `t()` renders is decided in-process, so the API's transport is a stand-in (`stub-api.ts`):
+ * nothing here asserts on what a server answered. Its own file: a second `init()` in one process
+ * is a no-op.
  */
-
-const SEED = {
-    projects: [{ id: 'p1', base_locale: 'en', target_locales: ['es-es'], website_url: 'https://site.local' }],
-    keys: [{ key: 'k-public', project: 'p1', type: 'ip_write', report_discovered_content: false }],
-};
 
 const legacyKeys = [
     { name: 'en.json', format: 'vue-i18n', data: { cart: { count: 'no items | one item | {count} items' } } },
     { name: 'checkout.json', namespace: 'checkout', data: { submit: 'Place order' } },
 ];
 
-let fx: ContractFixture;
+let api: StubbedApi;
 const t = (phrase: string, params?: Record<string, unknown>) =>
     (LangsysApp.t as unknown as (p: string, params?: Record<string, unknown>) => string)(phrase, params);
 
 beforeAll(async () => {
-    fx = await startContractFixture();
-    await fx.seed(SEED);
+    api = stubApi({ writeEnabled: false });
     for (const m of ['log', 'info', 'warn', 'error', 'group', 'groupCollapsed', 'groupEnd'] as const)
         vi.spyOn(console, m).mockImplementation(() => {});
     await LangsysApp.init({
-        projectid: 'p1',
-        key: 'k-public',
+        projectid: 'legacy-project',
+        key: 'legacy-key',
         UserLocaleStore: createLocaleStore('en'),
         baseLocale: 'en',
-        apiUrl: fx.baseUrl,
+        apiUrl: STUB_API_URL,
         legacyKeys,
     });
     await until(() => currentlyLoadedLocale.get() === 'en');
 });
-afterAll(async () => {
-    await fx.stop();
+afterAll(() => {
+    api.restore();
 });
 
 describe('MIG — legacyKeys reach the core through the init override', () => {

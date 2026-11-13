@@ -1,0 +1,142 @@
+{
+    "projects": [
+        {
+            "id": "79000900-0001-4000-8000-000000000000",
+            "title": "vue catalog-supersede base#1 pass 0 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "fr-fr",
+                "de-de",
+                "it-it",
+                "pt-pt"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "fr-fr": "Bonjour",
+                        "de-de": "Hallo",
+                        "it-it": "Ciao",
+                        "pt-pt": "Olá"
+                    }
+                }
+            ],
+            "user": {
+                "token": "144001|97ac207e9edbc90dff0c1ecbbe5d962a4c59b41e",
+                "device_id": "vue-catalog-supersede-1"
+            }
+        },
+        {
+            "id": "79000900-0002-4000-8000-000000000000",
+            "title": "vue catalog-supersede base#1 pass 1 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "fr-fr",
+                "de-de",
+                "it-it",
+                "pt-pt"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "fr-fr": "Bonjour",
+                        "de-de": "Hallo",
+                        "it-it": "Ciao",
+                        "pt-pt": "Olá"
+                    }
+                }
+            ],
+            "user": {
+                "token": "144002|87589234cabcb88ba72658645591cea0a2133632",
+                "device_id": "vue-catalog-supersede-2"
+            }
+        },
+        {
+            "id": "79000900-0003-4000-8000-000000000000",
+            "title": "vue catalog-supersede base#1 pass 2 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "fr-fr",
+                "de-de",
+                "it-it",
+                "pt-pt"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "fr-fr": "Bonjour",
+                        "de-de": "Hallo",
+                        "it-it": "Ciao",
+                        "pt-pt": "Olá"
+                    }
+                }
+            ],
+            "user": {
+                "token": "144003|69f471bec6920a4f0d7989bf230794ea0294776a",
+                "device_id": "vue-catalog-supersede-3"
+            }
+        },
+        {
+            "id": "79000900-0004-4000-8000-000000000000",
+            "title": "vue catalog-supersede base#1 pass 3 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "fr-fr",
+                "de-de",
+                "it-it",
+                "pt-pt"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Hello",
+                    "translations": {
+                        "fr-fr": "Bonjour",
+                        "de-de": "Hallo",
+                        "it-it": "Ciao",
+                        "pt-pt": "Olá"
+                    }
+                }
+            ],
+            "user": {
+                "token": "144004|20e66f7b91af7c64f5096fbfca2f4cdc0766ee03",
+                "device_id": "vue-catalog-supersede-4"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000901-0001-4000-8000-000000000000",
+            "key": "vue-catalog-supersede-1-k-reader",
+            "project": "79000900-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000901-0002-4000-8000-000000000000",
+            "key": "vue-catalog-supersede-2-k-reader",
+            "project": "79000900-0002-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000901-0003-4000-8000-000000000000",
+            "key": "vue-catalog-supersede-3-k-reader",
+            "project": "79000900-0003-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000901-0004-4000-8000-000000000000",
+            "key": "vue-catalog-supersede-4-k-reader",
+            "project": "79000900-0004-4000-8000-000000000000",
+            "type": "read"
+        }
+    ]
+}

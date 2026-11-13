@@ -103,7 +103,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 });
 ```
 
-`example/nuxt` is a complete app in this shape, and `npm run test:nuxt` builds it with Nuxt and serves it against a test double of the Langsys API: concurrent Italian and German requests each serve their own translation, a variable in text registers once as its placeholder phrase, and the payload's seed marks what the server sends itself.
+`example/nuxt` is a complete app in this shape, and `npm run test:nuxt` builds it with Nuxt and serves it against a real Langsys API seeded for the run (an SDK test clone): concurrent Italian and German requests each serve their own translation, a variable in text registers once as its placeholder phrase, and the payload's seed marks what the server sends itself.
 
 Do not call `scope.enter()` from a Nuxt plugin. `enter()` makes a scope current for the rest of the async context it is called in, and a plugin is an async function Nuxt awaits: entered after the plugin's own `await`, it does not isolate the request, and under concurrent requests an Italian page can render German. `provideRequestScope` uses Vue's per-app injection instead, so a request's app can only ever see its own scope. `enter()` is safe only in the function that goes on to render, before the render starts — never in a helper that function awaits, where it sets the scope for the helper alone.
 

@@ -1,0 +1,106 @@
+{
+    "projects": [
+        {
+            "id": "79000e00-0001-4000-8000-000000000000",
+            "title": "vue reference-lists base#1 pass 0 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146501|213c2ee352d47ca216e1df2c669ea8419c74d7a7",
+                "device_id": "vue-reference-lists-1"
+            }
+        },
+        {
+            "id": "79000e00-0002-4000-8000-000000000000",
+            "title": "vue reference-lists base#1 pass 1 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146502|e508e0f92459bc598ff62f723ddfa7923d563210",
+                "device_id": "vue-reference-lists-2"
+            }
+        },
+        {
+            "id": "79000e00-0003-4000-8000-000000000000",
+            "title": "vue reference-lists base#1 pass 2 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146503|3d4ac2313cc82bb89e4eae779c0599979a525ee8",
+                "device_id": "vue-reference-lists-3"
+            }
+        },
+        {
+            "id": "79000e00-0004-4000-8000-000000000000",
+            "title": "vue reference-lists base#1 pass 3 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146504|27e7eda10cd4eb31667769f3097f9063658b21c8",
+                "device_id": "vue-reference-lists-4"
+            }
+        },
+        {
+            "id": "79000e00-0005-4000-8000-000000000000",
+            "title": "vue reference-lists base#1 pass 4 p1",
+            "base_locale": "en-us",
+            "target_locales": [
+                "es-es",
+                "de-de"
+            ],
+            "website_url": "https://site.local",
+            "user": {
+                "token": "146505|daa300e5723f5361de3bcb315d1cc762406b57dc",
+                "device_id": "vue-reference-lists-5"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000e01-0001-4000-8000-000000000000",
+            "key": "vue-reference-lists-1-k-reader",
+            "project": "79000e00-0001-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000e01-0002-4000-8000-000000000000",
+            "key": "vue-reference-lists-2-k-reader",
+            "project": "79000e00-0002-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000e01-0003-4000-8000-000000000000",
+            "key": "vue-reference-lists-3-k-reader",
+            "project": "79000e00-0003-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000e01-0004-4000-8000-000000000000",
+            "key": "vue-reference-lists-4-k-reader",
+            "project": "79000e00-0004-4000-8000-000000000000",
+            "type": "read"
+        },
+        {
+            "id": "79000e01-0005-4000-8000-000000000000",
+            "key": "vue-reference-lists-5-k-reader",
+            "project": "79000e00-0005-4000-8000-000000000000",
+            "type": "read"
+        }
+    ]
+}

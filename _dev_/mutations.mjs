@@ -4,8 +4,7 @@
  *
  * The spec says a runtime rule is proven by showing that BREAKING the behaviour turns
  * the test red, and that evidence which cannot be re-run on demand is a memory, not a
- * test. Every mutation this binding's conformance file cites used to live in commit
- * messages and throwaway scripts. This runner is the reproducible form.
+ * test. This runner holds every mutation this binding's conformance file cites.
  *
  * For each mutation it:
  *   1. asserts every `find` snippet occurs EXACTLY ONCE in its file — a snippet that
@@ -14,22 +13,50 @@
  *   2. writes the mutated file, runs the named check, and records whether it went red;
  *   3. restores the original bytes, always — on success, on failure, and on SIGINT.
  *
- * Exit 0 only when the baseline is green AND every mutation turned its check red.
+ * A check is unit files (`npm test`, no server) and contract files (`*-contract.test.ts`,
+ * which run against the SDK test clone, spec CONF-2). Two modes:
+ *
+ *   npm run test:mutations
+ *       Runs each mutation's unit files. A mutation they turn red is RED. One that names
+ *       contract files and survives its unit files, or names no unit file, needs the clone,
+ *       and is listed with the command that runs it there. Exit 0 when the baseline is
+ *       green, no mutation is stale, and every mutation is RED or needs the clone.
+ *
+ *   npm run test:mutations -- --contract --pass N
+ *       Runs the mutations that need the clone, after a reseed (contract-fixture/README.md
+ *       names the environment). What a run writes stays on the clone, so every run takes a
+ *       pass of its own (test/helpers/contract-worlds.ts): the baseline of each contract
+ *       file takes pass N, and the j-th mutation naming a file, in table order, takes pass
+ *       N + 1 + j of that file. `npm run test:contract` takes pass 0, so N is 1 after one
+ *       contract run. Exit 0 when the baseline is green and every one of them is RED.
+ *
+ * Either mode takes mutation ids to run only those.
  *
  * It never writes to the checkout it is started from. It runs in a temporary git worktree at
  * HEAD with the checkout's uncommitted changes and untracked files copied in, and
  * `node_modules` linked, so the SDK under test is the one the checkout resolves. The worktree
- * is removed afterwards.
- *
- *   npm run test:mutations
+ * is removed afterwards. Imported, it only exports the table.
  */
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    copyFileSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    realpathSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const vitest = (...files) => ({ label: `vitest ${files.join(' ')}`, cmd: 'npx', args: ['vitest', 'run', ...files] });
+const vitest = (...files) => ({ label: `vitest ${files.join(' ')}`, files });
 const typecheck = { label: 'tsc --noEmit', cmd: 'npx', args: ['tsc', '--noEmit'] };
+
+/** A contract file runs against the SDK test clone; every other test file is a unit file. */
+export const isContractFile = (file) => file.endsWith('-contract.test.ts');
 
 const TIMER_BLOCK = [
     '    const timer = setTimeout(() => {',
@@ -1551,7 +1578,53 @@ export const MUTATIONS = [
         ],
         check: vitest('src/category-move.test.ts'),
     },
+    {
+        id: 'M125',
+        rules: 'SRV-7',
+        what: 'a hydrated <Translate> hands the core an empty tree, so the client registers the block the server rendered with no content',
+        file: 'src/components/Translate.ts',
+        edits: [{ find: 'return registerBlock(tree, {', replace: 'return registerBlock([], {' }],
+        check: vitest('src/client-registers-contract.test.ts'),
+    },
+    {
+        id: 'M126',
+        rules: 'REF-1',
+        what: "the proxy answers getCountries with a read of its own instead of the core's held list",
+        file: 'src/index.ts',
+        edits: [
+            {
+                find: '    LangsysApp as _LangsysApp,\n',
+                replace: '    LangsysApp as _LangsysApp,\n    LangsysAppAPI as _OwnReads,\n',
+            },
+            {
+                find: '        const value = Reflect.get(target, prop, target);\n',
+                replace:
+                    "        if (prop === 'getCountries')\n            return async (locale?: string) => (await _OwnReads.get(`countries/${locale ?? 'es-es'}`, {})).data;\n        const value = Reflect.get(target, prop, target);\n",
+            },
+        ],
+        check: vitest('src/reference-lists-contract.test.ts'),
+    },
 ];
+
+/**
+ * The pass the j-th mutation naming `file` takes, counting from `start`: the file's baseline
+ * takes `start` itself. Counted over the whole table, so a mutation's pass does not move when
+ * only some ids are run.
+ */
+export function contractPassOf(mutation, file, start) {
+    const naming = MUTATIONS.filter((m) => m.check.files?.includes(file));
+    const j = naming.indexOf(mutation);
+    if (j < 0) throw new Error(`${mutation.id} names no ${file}`);
+    return start + 1 + j;
+}
+
+/** How many mutations name each contract file: what its seed file's passes must hold. */
+export function mutationsPerContractFile() {
+    const counts = {};
+    for (const m of MUTATIONS)
+        for (const f of m.check.files ?? []) if (isContractFile(f)) counts[f] = (counts[f] ?? 0) + 1;
+    return counts;
+}
 
 /**
  * Re-run this script inside a temporary worktree that reproduces the checkout, and exit with
@@ -1600,81 +1673,191 @@ function runInWorktree() {
     }
 }
 
-if (!process.env.LANGSYS_MUTATIONS_IN_WORKTREE) process.exit(runInWorktree());
+// Compared as real paths: the worktree lives under the temporary directory, which macOS reaches
+// through a symlink (/var → /private/var), and a path compared as given would never match.
+const isMain =
+    process.argv[1] !== undefined &&
+    realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
+if (isMain && !process.env.LANGSYS_MUTATIONS_IN_WORKTREE) process.exit(runInWorktree());
+if (isMain) main();
 
-const originals = new Map();
-function restoreAll() {
-    for (const [file, bytes] of originals) writeFileSync(file, bytes);
-    originals.clear();
-}
-for (const sig of ['SIGINT', 'SIGTERM']) {
-    process.on(sig, () => {
-        restoreAll();
-        process.exit(130);
-    });
-}
-
-function run(check) {
-    const r = spawnSync(check.cmd, check.args, { encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } });
-    const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
-    const failed = /Tests\s+(\d+)\s+failed/.exec(out)?.[1];
-    const tsErrors = (out.match(/error TS\d+/g) ?? []).length;
-    return { status: r.status, failed: failed ? Number(failed) : 0, tsErrors, out };
-}
-
-function occurrences(haystack, needle) {
-    let n = 0;
-    for (let i = haystack.indexOf(needle); i !== -1; i = haystack.indexOf(needle, i + needle.length)) n++;
-    return n;
-}
-
-const only = process.argv.slice(2);
-const selected = only.length ? MUTATIONS.filter((m) => only.includes(m.id)) : MUTATIONS;
-
-console.log('Baseline — the suite and the typecheck must be green before any mutation means anything.');
-const baseTests = run(vitest());
-const baseTypes = run(typecheck);
-if (baseTests.status !== 0 || baseTypes.status !== 0) {
-    console.error(`Baseline is not green (vitest exit ${baseTests.status}, tsc exit ${baseTypes.status}). Aborting.`);
-    process.exit(1);
-}
-console.log('Baseline green.\n');
-
-const rows = [];
-let bad = 0;
-for (const m of selected) {
-    const source = readFileSync(m.file, 'utf8');
-    const stale = m.edits.filter((e) => occurrences(source, e.find) !== 1);
-    if (stale.length) {
-        rows.push({ m, result: `STALE — ${stale.length} snippet(s) not found exactly once` });
-        bad++;
-        continue;
+function main() {
+    const args = process.argv.slice(2);
+    const contract = args.includes('--contract');
+    const passAt = args.indexOf('--pass');
+    const start = passAt >= 0 ? Number(args[passAt + 1]) : undefined;
+    const only = args.filter((a, i) => !a.startsWith('--') && (passAt < 0 || i !== passAt + 1));
+    if (contract) {
+        if (start === undefined || !Number.isInteger(start) || start < 0) {
+            console.error(
+                '--contract needs --pass N: the first pass this run may take (test/helpers/contract-worlds.ts).'
+            );
+            process.exit(2);
+        }
+        if (!process.env.LANGSYS_CONTRACT_TARGET || !process.env.LANGSYS_CONTRACT_CLONE_ROOT) {
+            console.error(
+                '--contract runs against the SDK test clone: set LANGSYS_CONTRACT_TARGET and LANGSYS_CONTRACT_CLONE_ROOT (contract-fixture/README.md).'
+            );
+            process.exit(2);
+        }
     }
-    originals.set(m.file, source);
-    try {
-        writeFileSync(
-            m.file,
-            m.edits.reduce((s, e) => s.replace(e.find, e.replace), source)
+
+    const originals = new Map();
+    const restoreAll = () => {
+        for (const [file, bytes] of originals) writeFileSync(file, bytes);
+        originals.clear();
+    };
+    for (const sig of ['SIGINT', 'SIGTERM']) {
+        process.on(sig, () => {
+            restoreAll();
+            process.exit(130);
+        });
+    }
+
+    const exec = (cmd, args, env = {}) => {
+        const r = spawnSync(cmd, args, { encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0', ...env } });
+        const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+        const failed = /Tests\s+(\d+)\s+failed/.exec(out)?.[1];
+        const tsErrors = (out.match(/error TS\d+/g) ?? []).length;
+        return { status: r.status, failed: failed ? Number(failed) : 0, tsErrors, out };
+    };
+    const unitRun = (files) => exec('npx', ['vitest', 'run', '--project', 'unit', ...files]);
+    const contractRun = (file, pass) =>
+        exec('npx', ['vitest', 'run', '--project', 'contract', file], { LANGSYS_CONTRACT_PASS: String(pass) });
+
+    const occurrences = (haystack, needle) => {
+        let n = 0;
+        for (let i = haystack.indexOf(needle); i !== -1; i = haystack.indexOf(needle, i + needle.length)) n++;
+        return n;
+    };
+    const unitFiles = (m) => (m.check.files ?? []).filter((f) => !isContractFile(f));
+    const contractFiles = (m) => (m.check.files ?? []).filter(isContractFile);
+
+    const chosen = only.length ? MUTATIONS.filter((m) => only.includes(m.id)) : MUTATIONS;
+
+    console.log('Baseline — the suite and the typecheck must be green before any mutation means anything.');
+    const baseTests = unitRun([]);
+    const baseTypes = exec(typecheck.cmd, typecheck.args);
+    if (baseTests.status !== 0 || baseTypes.status !== 0) {
+        console.error(
+            `Baseline is not green (vitest exit ${baseTests.status}, tsc exit ${baseTypes.status}). Aborting.`
         );
-        const r = run(m.check);
-        const red = r.status !== 0;
-        const detail = m.check === typecheck ? `${r.tsErrors} TS error(s)` : `${r.failed} failed`;
-        rows.push({ m, result: red ? `RED — ${detail}` : 'GREEN — mutation survived' });
-        if (!red) bad++;
-    } finally {
-        restoreAll();
+        process.exit(1);
     }
+
+    // A mutation's unit files, mutated: RED, or not red (survived, or no unit file to run).
+    const tryUnit = (m) => {
+        if (m.check === typecheck) {
+            const r = exec(typecheck.cmd, typecheck.args);
+            return { red: r.status !== 0, detail: `${r.tsErrors} TS error(s)` };
+        }
+        const files = unitFiles(m);
+        if (!files.length) return { red: false, detail: 'no unit file' };
+        const r = unitRun(files);
+        return { red: r.status !== 0, detail: `${r.failed} failed` };
+    };
+    const mutate = (m, body) => {
+        const source = readFileSync(m.file, 'utf8');
+        const stale = m.edits.filter((e) => occurrences(source, e.find) !== 1);
+        if (stale.length) return { stale: `STALE — ${stale.length} snippet(s) not found exactly once` };
+        originals.set(m.file, source);
+        try {
+            writeFileSync(
+                m.file,
+                m.edits.reduce((s, e) => s.replace(e.find, e.replace), source)
+            );
+            return body();
+        } finally {
+            restoreAll();
+        }
+    };
+
+    const rows = [];
+    let bad = 0;
+    if (!contract) {
+        console.log('Baseline green.\n');
+        const clone = [];
+        for (const m of chosen) {
+            const result = mutate(m, () => tryUnit(m));
+            if (result.stale) {
+                rows.push({ m, result: result.stale });
+                bad++;
+            } else if (result.red) rows.push({ m, result: `RED — ${result.detail}` });
+            else if (contractFiles(m).length) {
+                rows.push({
+                    m,
+                    result: `NEEDS THE CLONE — ${unitFiles(m).length ? 'its unit files stay green' : 'no unit file'}`,
+                });
+                clone.push(m.id);
+            } else {
+                rows.push({ m, result: 'GREEN — mutation survived' });
+                bad++;
+            }
+        }
+        report(rows);
+        const post = unitRun([]);
+        if (post.status !== 0) {
+            console.error('\nPost-run suite is not green — a restore may have failed. Check `git diff`.');
+            process.exit(1);
+        }
+        const red = rows.length - bad - clone.length;
+        console.log(`\n${red}/${rows.length} mutations turned their unit check red; post-run suite green.`);
+        if (clone.length)
+            console.log(
+                `${clone.length} need the SDK test clone: npm run test:mutations -- --contract --pass N ${clone.join(' ')}`
+            );
+        process.exit(bad ? 1 : 0);
+    }
+
+    // --contract: the mutations whose evidence is on the clone.
+    const needing = chosen.filter((m) => contractFiles(m).length);
+    const files = [...new Set(needing.flatMap(contractFiles))];
+    for (const file of files) {
+        const r = contractRun(file, start);
+        if (r.status !== 0) {
+            console.error(
+                `Baseline: ${file} is not green at pass ${start} (${r.failed} failed). Aborting.\n${r.out.slice(-4000)}`
+            );
+            process.exit(1);
+        }
+    }
+    console.log(
+        `Baseline green: the unit suite, the typecheck, and ${files.length} contract file(s) at pass ${start}.\n`
+    );
+    for (const m of needing) {
+        const result = mutate(m, () => {
+            const unit = tryUnit(m);
+            if (unit.red) return { red: true, detail: `${unit.detail} in its unit files; the clone was not needed` };
+            const ran = contractFiles(m).map((f) => ({ f, pass: contractPassOf(m, f, start), r: null }));
+            for (const run of ran) {
+                run.r = contractRun(run.f, run.pass);
+                if (run.r.status !== 0) break;
+            }
+            const failing = ran.filter((x) => x.r && x.r.status !== 0);
+            return failing.length
+                ? {
+                      red: true,
+                      detail: failing.map((x) => `${x.r.failed} failed in ${x.f} at pass ${x.pass}`).join('; '),
+                  }
+                : { red: false };
+        });
+        if (result.stale) {
+            rows.push({ m, result: result.stale });
+            bad++;
+        } else if (result.red) rows.push({ m, result: `RED — ${result.detail}` });
+        else {
+            rows.push({ m, result: 'GREEN — mutation survived on the clone' });
+            bad++;
+        }
+    }
+    report(rows);
+    console.log(`\n${rows.length - bad}/${rows.length} mutations that need the clone turned their check red.`);
+    process.exit(bad ? 1 : 0);
 }
 
-console.log('| id | rules | mutation | check | result |');
-console.log('| --- | --- | --- | --- | --- |');
-for (const { m, result } of rows)
-    console.log(`| ${m.id} | ${m.rules} | ${m.what} | \`${m.check.label}\` | ${result} |`);
-
-const after = run(vitest());
-if (after.status !== 0) {
-    console.error('\nPost-run suite is not green — a restore may have failed. Check `git diff`.');
-    process.exit(1);
+function report(rows) {
+    console.log('| id | rules | mutation | check | result |');
+    console.log('| --- | --- | --- | --- | --- |');
+    for (const { m, result } of rows)
+        console.log(`| ${m.id} | ${m.rules} | ${m.what} | \`${m.check.label}\` | ${result} |`);
 }
-console.log(`\n${rows.length - bad}/${rows.length} mutations turned their check red; post-run suite green.`);
-process.exit(bad ? 1 : 0);

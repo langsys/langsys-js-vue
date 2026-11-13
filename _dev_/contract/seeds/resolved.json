@@ -1,0 +1,286 @@
+{
+    "projects": [
+        {
+            "id": "79000100-0001-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 0 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140001|128aee2a4c53dcf3a5668063d2c9c0554aa40f91",
+                "device_id": "vue-resolved-1"
+            }
+        },
+        {
+            "id": "79000100-0002-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 1 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140002|1ab7e166e5414220088aa7202087f015c97e4d31",
+                "device_id": "vue-resolved-2"
+            }
+        },
+        {
+            "id": "79000100-0003-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 2 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140003|e89c3fb2d7e3627edf8fd9e3316626d6f796170a",
+                "device_id": "vue-resolved-3"
+            }
+        },
+        {
+            "id": "79000100-0004-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 3 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140004|3459462bd00c5863667e0a07eda6f7e2a8d4ec23",
+                "device_id": "vue-resolved-4"
+            }
+        },
+        {
+            "id": "79000100-0005-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 4 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140005|66d22f0d7daaf1e8c72c1cf82fd9cbcc2bc284c0",
+                "device_id": "vue-resolved-5"
+            }
+        },
+        {
+            "id": "79000100-0006-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 5 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140006|8516a388d53d39c4d4530d55160a2000b11677e9",
+                "device_id": "vue-resolved-6"
+            }
+        },
+        {
+            "id": "79000100-0007-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 6 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140007|0ded2e34feeb2bd756ecb42ca17d62fa891c7528",
+                "device_id": "vue-resolved-7"
+            }
+        },
+        {
+            "id": "79000100-0008-4000-8000-000000000000",
+            "title": "vue resolved base#1 pass 7 p1",
+            "base_locale": "en",
+            "target_locales": [
+                "es-es"
+            ],
+            "website_url": "https://site.local",
+            "phrases": [
+                {
+                    "category": "UI",
+                    "phrase": "Known phrase",
+                    "translations": {
+                        "es-es": "Frase conocida"
+                    }
+                },
+                {
+                    "category": "UI",
+                    "phrase": "Hello {m0o}world{m0c}",
+                    "translations": {
+                        "es-es": "Hola {m0o}mundo{m0c}"
+                    }
+                }
+            ],
+            "user": {
+                "token": "140008|8463743f4f5238d43aa05073a2551148977a0fa4",
+                "device_id": "vue-resolved-8"
+            }
+        }
+    ],
+    "keys": [
+        {
+            "id": "79000101-0001-4000-8000-000000000000",
+            "key": "vue-resolved-1-k-writer",
+            "project": "79000100-0001-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0002-4000-8000-000000000000",
+            "key": "vue-resolved-2-k-writer",
+            "project": "79000100-0002-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0003-4000-8000-000000000000",
+            "key": "vue-resolved-3-k-writer",
+            "project": "79000100-0003-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0004-4000-8000-000000000000",
+            "key": "vue-resolved-4-k-writer",
+            "project": "79000100-0004-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0005-4000-8000-000000000000",
+            "key": "vue-resolved-5-k-writer",
+            "project": "79000100-0005-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0006-4000-8000-000000000000",
+            "key": "vue-resolved-6-k-writer",
+            "project": "79000100-0006-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0007-4000-8000-000000000000",
+            "key": "vue-resolved-7-k-writer",
+            "project": "79000100-0007-4000-8000-000000000000",
+            "type": "write"
+        },
+        {
+            "id": "79000101-0008-4000-8000-000000000000",
+            "key": "vue-resolved-8-k-writer",
+            "project": "79000100-0008-4000-8000-000000000000",
+            "type": "write"
+        }
+    ]
+}
