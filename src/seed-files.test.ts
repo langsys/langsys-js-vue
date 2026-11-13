@@ -11,6 +11,7 @@ import blockUpdates from '../test/helpers/contract-seeds/block-updates.js';
 import catalogSupersede from '../test/helpers/contract-seeds/catalog-supersede.js';
 import clientRegisters from '../test/helpers/contract-seeds/client-registers.js';
 import handoff from '../test/helpers/contract-seeds/handoff.js';
+import moveCategories from '../test/helpers/contract-seeds/move-categories.js';
 import navigation from '../test/helpers/contract-seeds/navigation.js';
 import nuxt from '../test/helpers/contract-seeds/nuxt.js';
 import playground from '../test/helpers/contract-seeds/playground.js';
@@ -36,6 +37,7 @@ const FILES: Record<string, SeedFile<string>> = {
     'catalog-supersede': catalogSupersede,
     'client-registers': clientRegisters,
     handoff,
+    'move-categories': moveCategories,
     navigation,
     nuxt,
     playground,

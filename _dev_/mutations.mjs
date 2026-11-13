@@ -1604,6 +1604,33 @@ export const MUTATIONS = [
         ],
         check: vitest('src/reference-lists-contract.test.ts'),
     },
+    {
+        id: 'M127',
+        rules: 'MOVE-1',
+        what: "a mounted <Translate> registers without its previous category, though it renders from it, so the API keeps the moved block's translations under the old category only",
+        file: 'src/components/Translate.ts',
+        edits: [
+            {
+                find: '                ...options(),\n                host: host.value,\n',
+                replace:
+                    '                ...options(),\n                previousCategory: undefined,\n                host: host.value,\n',
+            },
+        ],
+        check: vitest('src/move-categories-contract.test.ts'),
+    },
+    {
+        id: 'M128',
+        rules: 'MOVE-1',
+        what: "a mounted <Phrase> registers without its previous category, though it renders from it, so the API keeps the moved phrase's translation under the old category only",
+        file: 'src/components/Phrase.ts',
+        edits: [
+            {
+                find: '                ...moved(),\n                params: props.params,\n                host: host.value,\n',
+                replace: '                params: props.params,\n                host: host.value,\n',
+            },
+        ],
+        check: vitest('src/move-categories-contract.test.ts'),
+    },
 ];
 
 /**
