@@ -6,13 +6,15 @@
  *
  * It packs the core (the build `node_modules/langsys-js-typescript` resolves to, or `LANGSYS_CORE`) and this package
  * (`npm run build` first) as tarballs, installs them with Nuxt into a temporary copy of
- * `example/nuxt`, builds it, and runs it. Needs the network for the Nuxt install; not part of
- * `npm test`.
+ * `example/nuxt`, builds it, and runs it. The packed core is the only one installed: it overrides
+ * the range this package declares, so a core whose version falls outside that range is still the
+ * one the app runs, never a registry copy nested under this package. Needs the network for the
+ * Nuxt install; not part of `npm test`.
  *
  *   npm run test:nuxt
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -47,10 +49,13 @@ try {
                 'langsys-js-typescript': `file:${coreTgz}`,
                 'langsys-js-vue': `file:${vueTgz}`,
             },
+            overrides: { 'langsys-js-typescript': '$langsys-js-typescript' },
         })
     );
     console.log('installing Nuxt…');
     sh('npm', ['install', '--no-audit', '--no-fund', '--silent'], app);
+    const nested = join(app, 'node_modules', 'langsys-js-vue', 'node_modules', 'langsys-js-typescript');
+    if (existsSync(nested)) throw new Error(`a second core was installed under langsys-js-vue: ${nested}`);
     console.log('building…');
     sh('npx', ['nuxi', 'build'], app);
 

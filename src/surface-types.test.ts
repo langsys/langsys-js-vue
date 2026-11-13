@@ -36,12 +36,12 @@ import type { iLangsysInitConfig } from './index.js';
 
 // ---------------------------------------------------------------------------
 // The assertion: a core-private member must NOT be reachable through the type.
-// `resolveLocale` is used only as a witness here; it is not API, and this file
+// `parseAcceptLanguageHeader` is used only as a witness here; it is not API, and this file
 // makes no claim about its continued existence. If the core removes it, replace
 // the witness — do not conclude that anything regressed.
 // ---------------------------------------------------------------------------
 // @ts-expect-error core-private members are excluded from the exported type
-void LangsysApp.resolveLocale;
+void LangsysApp.parseAcceptLanguageHeader;
 
 // ---------------------------------------------------------------------------
 // Positive control: a PUBLIC member must typecheck. Without this, the directive
@@ -68,7 +68,7 @@ describe('BIND-6 — the exported type exposes only the core public surface', ()
         // that is deliberate. The type is what draws the API line, which is why
         // the assertion in this file is a compile-time directive rather than a
         // runtime `expect`.
-        const reachableAtRuntime = 'resolveLocale' in (LangsysApp as unknown as object);
+        const reachableAtRuntime = 'parseAcceptLanguageHeader' in (LangsysApp as unknown as object);
         expect(reachableAtRuntime).toBe(true);
     });
 });

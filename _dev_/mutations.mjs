@@ -855,7 +855,7 @@ export const MUTATIONS = [
         file: 'src/compiler.ts',
         edits: [
             {
-                find: "            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;\n",
+                find: "            args = `${JSON.stringify(phrase)}, ...((p, a) => (typeof a === 'object' && !(a && a[Symbol.for('langsys.category')] === true) ? [{ ...p, ...a }] : [a, p]))(${params}, ${others[0]})`;\n",
                 replace: '            args = `${JSON.stringify(phrase)}, { ...${params}, ...(${others[0]}) }`;\n',
             },
         ],
@@ -1194,8 +1194,8 @@ export const MUTATIONS = [
         file: 'src/block-vnodes.ts',
         edits: [
             {
-                find: "        mergeProps({ [PHRASE_MARKER_ATTR]: '', [CATEGORY_MARKER_ATTR]: category ?? '' }, attrs),\n",
-                replace: "        mergeProps({ [PHRASE_MARKER_ATTR]: '' }, attrs),\n",
+                find: "                [CATEGORY_MARKER_ATTR]: category ?? '',\n",
+                replace: '',
             },
         ],
         check: vitest('src/block-vnodes.test.ts', 'src/variables-contract.test.ts'),
