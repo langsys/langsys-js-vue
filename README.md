@@ -419,7 +419,7 @@ A `<Phrase>` or `<Translate>` nested in a `<Translate>` (or in a `<Phrase>`) tha
 </Translate>
 ```
 
-Naming a previous category moves every use of that text in that category, so move them all in the same release. Requires a `langsys-js-typescript` newer than 0.7.3: this binding reads the attributes the base SDK marks a nested unit's category with, which 0.7.3 does not export.
+Naming a previous category moves every use of that text in that category, so move them all in the same release.
 
 ### Already-translated regions — `data-ls-resolved`
 
