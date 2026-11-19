@@ -1,3 +1,9 @@
+## 0.3.1 - unreleased
+
+### Fixed (documentation)
+
+- **The README documents the migration from i18n keys.** `legacyKeys` reached the base SDK through `LangsysApp.init` since 0.3.0, but only the base SDK's README described it, so a Vue developer couldn't find it. The new "Migrating from i18n keys" section shows the setup, what is converted, that a key's number params print as plain digits from core 0.7.5 (pass a year or an ID as a string on an earlier core), and how to keep the translations an app already has before deleting its other language files. Only documentation changed.
+
 ## 0.3.0 - 2026-11-14
 
 ### Added
