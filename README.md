@@ -496,6 +496,38 @@ syncNavigation(router);
 
 `syncNavigation` calls the base SDK's `notifyNavigation()` from `router.afterEach`, once the URL has moved, and skips failed or aborted navigations. It returns the hook's remover. With another router, call `notifyNavigation()` from its after-navigation hook yourself.
 
+## Migrating from i18n keys
+
+An app on vue-i18n or i18next (`t('checkout.submit')`) can move to Langsys without rewriting its call sites. Keep the source-language file and hand it to `LangsysApp.init` as `legacyKeys`:
+
+```ts
+import en from './locales/en.json';
+
+LangsysApp.init({
+    projectid,
+    key,
+    UserLocaleStore: store,
+    legacyKeys: [{ name: 'en.json', format: 'vue-i18n', data: en }],
+});
+```
+
+```vue
+<template>
+    <button>{{ t('checkout.submit') }}</button>
+    <!-- "Pay now", registered under the category "checkout" -->
+    <p>{{ t('Welcome back!') }}</p>
+    <!-- not a key: literal source text, as always -->
+</template>
+```
+
+`t()` resolves its argument as a key first. A key the file holds becomes its value, and that value, never the key, is the phrase Langsys registers and translates, so a later codemod can inline the English and delete the file without moving an id. The key's first segment is the category unless the call passes one. An argument the file doesn't hold is literal source text.
+
+Values are converted to Langsys syntax as they are read: `{{name}}` becomes `{name}`, and vue-i18n's `car | cars` and i18next's `items_one` / `items_other` keys become plurals, whose argument is `count`, so pass `{ count }`. Formats are `i18next`, `vue-i18n` and `plain` (the default); any other makes `init()` throw a `LegacyFormatError` naming the file. A value the conversion can't express registers exactly as written and logs a warning naming the file and key. `namespace` makes a per-namespace file answer only keys under that prefix, with the namespace as their category, and with several files the first that holds a key answers. Leave `legacyKeys` unset once the migration is done, and `t()` does no key lookup at all. The full rules are in [langsys-js-typescript's README](https://github.com/langsys/langsys-js-typescript#migrating-from-i18n-keys).
+
+**Numbers are formatted for the locale.** vue-i18n and i18next print a number param as it is; Langsys formats it with the locale's grouping, so `t('footer.copyright', { year: 2026 })` on `© {year} …` shows `© 2,026` in English and `© 2 026` in French. Pass a year, an ID or an order number as a string (`{ year: '2026' }`) to keep it as written.
+
+**Keep the translations you already have.** Before deleting `es.json`, `fr.json` and the rest, send them to Langsys as human translations, so they show at once and aren't machine-translated again. No JavaScript package does this yet: register each phrase with its translations through `POST /api/translatable-items` (each item's `translations` list, one `{ locale, translation }` per language), or use the PHP SDK's `importLegacyTranslations()`. The answer counts the translations saved and those skipped for the plan's human-translation word limit (`human_translations_saved`, `human_translations_skipped`).
+
 ## Server messages
 
 Validation errors and system messages stay in your framework's own error format. A Langsys server SDK attaches translatable entries beside them — `{ template, params?, message, field?, code? }` — under a key you configure (the Laravel binding uses `langsys_errors`). Render them with `useServerMessage()`:
